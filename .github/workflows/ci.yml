@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install musl toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+      - name: Build static binary
+        run: |
+          rustc --target x86_64-unknown-linux-musl -o no-phase-static no-phase.rs -C target-feature=+crt-static
+          file no-phase-static
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: no-phase-static
+          path: no-phase-static
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run conformance gates
+        run: |
+          chmod +x lint-skill.sh
+          ./lint-skill.sh
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: no-phase-static
+          path: .
+      - name: Make executable
+        run: chmod +x no-phase-static
+      - name: Run integration tests
+        run: |
+          chmod +x test-integration.sh
+          ./test-integration.sh ./no-phase-static

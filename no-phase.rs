@@ -11,19 +11,6 @@ const FLAG_TERMS: &[&str] = &[
     "leg", "lap", "level",
 ];
 
-const ALLOWLIST_PREFIXES: &[&str] = &[
-    "feat", "fix", "docs", "style", "refactor", "perf", "test",
-    "build", "ci", "chore", "revert", "improvement",
-    "praise", "nitpick", "nit", "suggestion", "issue", "todo",
-    "question", "thought",
-    "wip", "lgtm", "ptal", "tbd", "tl;dr", "iirc", "afaict", "rfc",
-];
-
-const CODE_TAGS: &[&str] = &[
-    "todo", "fixme", "xxx", "hack", "bug", "note", "nb",
-    "optimize", "review", "wontfix", "nobug",
-];
-
 const CI_PATTERNS: &[&str] = &[
     ".github/workflows",
     ".gitlab-ci",
@@ -44,44 +31,18 @@ fn is_ci_file(path: &str) -> bool {
     CI_PATTERNS.iter().any(|p| lower.contains(p))
 }
 
-fn is_allowlist(line: &str) -> bool {
-    let trimmed = line.trim().to_lowercase();
-    let words: Vec<&str> = trimmed.split_whitespace().take(1).collect();
-    let first = words.first().copied().unwrap_or("");
-    let first = first.trim_matches(|c: char| !c.is_alphanumeric());
-
-    for prefix in ALLOWLIST_PREFIXES {
-        if first == *prefix || first.starts_with(&format!("{}(", prefix)) || first.starts_with(&format!("{}:", prefix)) {
-            return true;
-        }
-    }
-
-    for tag in CODE_TAGS {
-        if first == *tag || first.starts_with(&format!("{}(", tag)) || first.starts_with(&format!("{}:", tag)) || first.starts_with(&format!("{} ", tag)) {
-            return true;
-        }
-    }
-
-    false
-}
-
 fn is_numeral(word: &str) -> bool {
-    let cleaned: String = word.chars().filter(|c| c.is_ascii_digit() || *c == 'I' || *c == 'i' || *c == 'V' || *c == 'v' || *c == 'X' || *c == 'x' || *c == 'L' || *c == 'l').collect();
-    if cleaned.is_empty() {
+    if word.is_empty() {
         return false;
     }
-    if cleaned.chars().all(|c| c.is_ascii_digit()) {
+    if word.chars().all(|c| c.is_ascii_digit()) {
         return true;
     }
-    let upper = cleaned.to_uppercase();
-    upper.chars().all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')) && upper.len() <= 4
+    let upper = word.to_uppercase();
+    upper.len() <= 4 && upper.chars().all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
 }
 
 fn check_line(line: &str) -> Option<String> {
-    if is_allowlist(line) {
-        return None;
-    }
-
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
 
