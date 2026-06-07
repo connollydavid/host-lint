@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -15,15 +16,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
+          rustup target add x86_64-unknown-linux-musl
       - name: Build static binary
         run: |
-          rustc --target x86_64-unknown-linux-musl -o no-phase-static no-phase.rs -C target-feature=+crt-static
-          file no-phase-static
+          cargo build --release --target x86_64-unknown-linux-musl
+          file target/x86_64-unknown-linux-musl/release/no-phase
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: no-phase-static
-          path: no-phase-static
+          path: target/x86_64-unknown-linux-musl/release/no-phase
 
   conformance:
     runs-on: ubuntu-latest
@@ -36,17 +38,38 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - uses: actions/checkout@v4
-      - name: Download binary
+      - name: Run proptest tests
+        run: cargo test
+      - name: Download static binary
         uses: actions/download-artifact@v4
         with:
           name: no-phase-static
           path: .
       - name: Make executable
-        run: chmod +x no-phase-static
+        run: chmod +x no-phase
       - name: Run integration tests
         run: |
           chmod +x test-integration.sh
-          ./test-integration.sh ./no-phase-static
+          ./test-integration.sh ./no-phase
+
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, conformance, test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download static binary
+        uses: actions/download-artifact@v4
+        with:
+          name: no-phase-static
+          path: .
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            no-phase

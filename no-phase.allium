@@ -1,0 +1,82 @@
+-- no-phase.allium
+-- Specification for phase-synonym agentic tell detection
+
+entity Line {
+    text: String
+    source: String -- file path or "stdin"
+    line_number: Integer
+}
+
+entity Match {
+    line: Line
+    term: String -- the flag term that matched (e.g. "phase")
+    numeral: String -- the numeral that triggered detection (e.g. "1", "II")
+}
+
+entity FlagTerm {
+    value: String -- one of: phase, stage, step, part, pass, round, iteration,
+                  -- sprint, cycle, increment, wave, batch, section, period,
+                  -- era, epoch, chapter, episode, instalment, leg, lap, level
+}
+
+entity Numeral {
+    value: String -- Arabic digits (e.g. "1", "42") or Roman numerals (e.g. "I", "II", "IV", "X")
+    kind: arabic | roman
+}
+
+entity Ordinal {
+    value: String -- e.g. "first", "second", "third" -- NOT a numeral
+}
+
+entity AllowlistPrefix {
+    value: String -- conventional commit types, code tags, review shorthand
+    kind: commit_type | code_tag | review_shorthand
+}
+
+config {
+    max_roman_length: Integer = 4
+}
+
+rule DetectPhaseSynonym {
+    when: line: Line.created
+    let words = line.text.split_whitespace()
+    let match = first word in words where:
+        word.lowercase.trim_punctuation in FlagTerm.values
+        and (words[next].trim_punctuation is Numeral
+             or words[next+1].trim_punctuation is Numeral)
+    ensures: Match.created(line: line, term: match.term, numeral: match.numeral)
+        when match != null
+}
+
+rule RejectOrdinals {
+    when: word: String in ["first", "second", "third", "fourth", "fifth",
+                           "sixth", "seventh", "eighth", "ninth", "tenth"]
+    ensures: word is NOT Numeral
+}
+
+Rule CaseInsensitive {
+    when: line: Line.created
+    ensures: detection operates on line.text.lowercase
+}
+
+Rule NumeralGate {
+    when: term: FlagTerm in line.text
+    ensures: Match.created only when numeral follows term (within 2 words)
+    ensures: no Match when term is followed by non-numeral word
+}
+
+invariant OrdinalNotNumeral {
+    for ordinal in ["first", "second", "third", "fourth", "fifth",
+                    "sixth", "seventh", "eighth", "ninth", "tenth"]:
+        ordinal is NOT a valid Numeral
+}
+
+invariant RomanNumeralLength {
+    for numeral in Numeral where numeral.kind = roman:
+        numeral.value.length <= config.max_roman_length
+}
+
+invariant ArabicDigits {
+    for numeral in Numeral where numeral.kind = arabic:
+        numeral.value contains only ASCII digits
+}

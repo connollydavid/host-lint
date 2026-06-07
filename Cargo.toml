@@ -1,0 +1,11 @@
+[package]
+name = "no-phase"
+version = "0.1.0"
+edition = "2021"
+description = "Detect phase-synonym agentic tells in commits, headers, and comments"
+license = "Unlicense"
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.5"
