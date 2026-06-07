@@ -1,0 +1,45 @@
+#!/bin/bash
+# pre-commit hook for host-lint
+# Installs as .git/hooks/pre-commit or .git/hooks/commit-msg
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BINARY="$SCRIPT_DIR/host-lint"
+EXIT_CODE=0
+
+if [ ! -x "$BINARY" ]; then
+    echo "host-lint: binary not found or not executable at $BINARY" >&2
+    exit 2
+fi
+
+case "$1" in
+    pre-commit)
+        staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+        if [ -n "$staged_files" ]; then
+            while IFS= read -r file; do
+                if [ -f "$file" ]; then
+                    result=$("$BINARY" "$file" 2>&1)
+                    if [ $? -ne 0 ]; then
+                        echo "$result" >&2
+                        EXIT_CODE=1
+                    fi
+                fi
+            done <<< "$staged_files"
+        fi
+        ;;
+    commit-msg)
+        msg_file="$1"
+        if [ -f "$msg_file" ]; then
+            result=$("$BINARY" --stdin < "$msg_file" 2>&1)
+            if [ $? -ne 0 ]; then
+                echo "$result" >&2
+                EXIT_CODE=1
+            fi
+        fi
+        ;;
+    *)
+        echo "Usage: $0 [pre-commit|commit-msg]" >&2
+        exit 2
+        ;;
+esac
+
+exit $EXIT_CODE
