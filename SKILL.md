@@ -7,10 +7,11 @@ Detects numbered phase-synonym patterns that signal LLM-generated plan language 
 
 ## Install
 
-Get the `no-phase` binary (statically linked linux-amd64) from the latest GitHub release, or build it with `cargo build --release`:
+Get the `no-phase` binary for your platform from the latest GitHub release, or build it with `cargo build --release`. Release assets cover linux, darwin, and windows on amd64 and arm64 (e.g. `no-phase-linux-amd64`, `no-phase-darwin-arm64`, `no-phase-windows-amd64.exe`):
 
 ```
-gh release download -R connollydavid/no-phase-skill -p no-phase -O no-phase
+# substitute your platform asset name
+gh release download -R connollydavid/no-phase-skill -p no-phase-linux-amd64 -O no-phase
 chmod +x no-phase
 ```
 
@@ -60,4 +61,4 @@ Run the binary against the target and act on results:
 
 ## Portability notes
 
-The released `no-phase` binary is a statically linked linux-amd64 executable with no runtime dependencies. For other platforms, build from source with `cargo build --release`.
+Released binaries cover linux (static musl), macOS, and windows on amd64 and arm64, with no runtime dependencies. For other platforms, build from source with `cargo build --release`.
