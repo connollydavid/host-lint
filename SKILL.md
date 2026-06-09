@@ -5,18 +5,29 @@ description: Lints phase-synonym agentic tells in commit messages, markdown head
 
 Detects numbered phase-synonym patterns that signal LLM-generated plan language bleeding into commits, headers, and comments. Implements the rules in VOCABULARY.md.
 
+## Install
+
+Get the `host-lint` binary (statically linked linux-amd64) from the latest GitHub release, or build it with `cargo build --release`:
+
+```
+gh release download -R connollydavid/host-lint -p host-lint -O host-lint
+chmod +x host-lint
+```
+
+To use as an agent skill in Claude Code, copy or symlink this directory into `.claude/skills/` of the consuming repo.
+
 ## Usage
 
-### As a pre-commit hook
+### As a git hook
 
-Copy `pre-commit` into `.git/hooks/` of the target repo:
+Copy the binary and `pre-commit` into `.git/hooks/` of the target repo. The script dispatches on its installed name, so install it as `pre-commit` (scans staged files), `commit-msg` (scans the commit message), or both:
 
 ```
-cp host-lint/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+cp host-lint .git/hooks/host-lint
+cp pre-commit .git/hooks/pre-commit
+cp pre-commit .git/hooks/commit-msg
+chmod +x .git/hooks/host-lint .git/hooks/pre-commit .git/hooks/commit-msg
 ```
-
-The hook runs the `host-lint` binary against the commit message (commit-msg stage) and staged files (pre-commit stage).
 
 ### As a CLI
 
@@ -49,4 +60,4 @@ Run the binary against the target and act on results:
 
 ## Portability notes
 
-The `host-lint` binary is a statically linked Linux amd64 executable committed to this directory. It requires no runtime dependencies. For other platforms, compile from `host-lint.rs` with `rustc`.
+The released `host-lint` binary is a statically linked linux-amd64 executable with no runtime dependencies. For other platforms, build from source with `cargo build --release`.
