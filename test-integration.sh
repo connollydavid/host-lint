@@ -56,7 +56,7 @@ echo "NOTE: this is intentional" | $BINARY --stdin >/dev/null 2>&1 && ok "NOTE: 
 # --- JSON output test ---
 echo ""
 echo "--- JSON output ---"
-json=$(echo "## Phase 1: Setup" | $BINARY --stdin --json 2>/dev/null)
+json=$(echo "## Phase 1: Setup" | $BINARY --stdin --json 2>/dev/null) || true
 if echo "$json" | grep -q '"phase"'; then
     ok "JSON output contains term"
 else
