@@ -5,18 +5,29 @@ description: Lints phase-synonym agentic tells in commit messages, markdown head
 
 Detects numbered phase-synonym patterns that signal LLM-generated plan language bleeding into commits, headers, and comments. Implements the rules in VOCABULARY.md.
 
+## Install
+
+Get the `no-phase` binary (statically linked linux-amd64) from the latest GitHub release, or build it with `cargo build --release`:
+
+```
+gh release download -R connollydavid/no-phase-skill -p no-phase -O no-phase
+chmod +x no-phase
+```
+
+To use as an agent skill in Claude Code, copy or symlink this directory into `.claude/skills/` of the consuming repo.
+
 ## Usage
 
-### As a pre-commit hook
+### As a git hook
 
-Copy `pre-commit` into `.git/hooks/` of the target repo:
+Copy the binary and `pre-commit` into `.git/hooks/` of the target repo. The script dispatches on its installed name, so install it as `pre-commit` (scans staged files), `commit-msg` (scans the commit message), or both:
 
 ```
-cp no-phase-skill/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+cp no-phase .git/hooks/no-phase
+cp pre-commit .git/hooks/pre-commit
+cp pre-commit .git/hooks/commit-msg
+chmod +x .git/hooks/no-phase .git/hooks/pre-commit .git/hooks/commit-msg
 ```
-
-The hook runs the `no-phase` binary against the commit message (commit-msg stage) and staged files (pre-commit stage).
 
 ### As a CLI
 
@@ -49,4 +60,4 @@ Run the binary against the target and act on results:
 
 ## Portability notes
 
-The `no-phase` binary is a statically linked Linux amd64 executable committed to this directory. It requires no runtime dependencies. For other platforms, compile from `no-phase.rs` with `rustc`.
+The released `no-phase` binary is a statically linked linux-amd64 executable with no runtime dependencies. For other platforms, build from source with `cargo build --release`.
