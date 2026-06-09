@@ -11,7 +11,9 @@ if [ ! -x "$BINARY" ]; then
     exit 2
 fi
 
-case "$1" in
+# Git invokes hooks by name with no name argument: pre-commit gets no args,
+# commit-msg gets the message file path as $1. Dispatch on the installed name.
+case "$(basename "$0")" in
     pre-commit)
         staged_files=$(git diff --cached --name-only --diff-filter=ACM)
         if [ -n "$staged_files" ]; then
@@ -37,7 +39,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: $0 [pre-commit|commit-msg]" >&2
+        echo "host-lint: install this script as .git/hooks/pre-commit or .git/hooks/commit-msg" >&2
         exit 2
         ;;
 esac
