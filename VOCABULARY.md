@@ -1,5 +1,20 @@
 # Phase-synonym agentic tells vs idiomatic git vocabulary
 
+## Write it this way: the rewrite dictionary
+
+Before the flag lists, the positive rule. Name work after its content, and encode sequence with document order and ordinary connectives ("after the parser lands", "once CI is green"). If you plan with internal codes, keep a dictionary in working memory that maps each plan code to a descriptive name, and always emit the descriptive side; the code never reaches prose, headers, or commit subjects.
+
+| Internal plan code (never emit) | Descriptive text (emit this) |
+|---|---|
+| `## Phase 1: Setup` | `## Setup` |
+| `// Pass 1: tokenize` | `// tokenization pass` |
+| `Step 3 of 5: configure CI` | `Configure CI (after tests pass, before release)` |
+| `feat: phase 2 of auth refactor` | `feat(auth): add session storage` |
+| `M2 delivered the projection model` | `the projection model is verified against three reference kernels` |
+| `## 5.5` | `## Error handling` |
+
+The last pair of rows carry the two hardest lessons: artifacts state claims about content, not diary entries about plan position; and eliding the noun to leave a bare numeral is the same tell, not a fix.
+
 Reference for an anti-slop linter or commit hook. Two lists that must not be confused: the numbered-segment vocabulary an LLM coding agent stamps on plans, comments, and commit subjects (flag), and the established git, code-review, and source-annotation vocabulary that is normal human practice (allow). A third gray-zone list covers terms that are neither, to stop the linter over-matching.
 
 The signature of the flag list is a noun from section 1 followed by a numeral (`Phase 1`, `Step 2`, `Stage II`, `Pass 1 of 3`). The numeral and any "of N" total are the actual tell; the noun alone is not. The framing is cross-model: GPT, Gemini, Claude, Cursor, and Copilot all produce numbered `Phase`/`Step`/`Part` headers, so this is not specific to one assistant.
