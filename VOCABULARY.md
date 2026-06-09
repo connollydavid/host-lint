@@ -4,6 +4,8 @@ Reference for an anti-slop linter or commit hook. Two lists that must not be con
 
 The signature of the flag list is a noun from section 1 followed by a numeral (`Phase 1`, `Step 2`, `Stage II`, `Pass 1 of 3`). The numeral and any "of N" total are the actual tell; the noun alone is not. The framing is cross-model: GPT, Gemini, Claude, Cursor, and Copilot all produce numbered `Phase`/`Step`/`Part` headers, so this is not specific to one assistant.
 
+The boundary is register, not the words themselves. These nouns in ordinary descriptive use ("the first pass over the array", "another round of review") are normal English, and the numeral gate allowlists exactly that. The tell is the filing-system register: numbered codes used as names in prose, headers, and commit subjects. People organise sequence with names and ordinary connectives; project-management segmentation as a universal organising principle is a register transplant, and that transplant is why it reads as machine output. The degenerate form — a bare numeral as a name with the noun elided (`## 3`, `## 5.5`, "as decided in 2.1") — is the same tell, not a fix for it.
+
 ## 1. Flag list: agentic phase-synonyms
 
 True synonyms for "phase" as an ordered, numberable span. Flag when one appears in a heading, a leading comment, or a commit subject and is followed by a numeral.
@@ -150,6 +152,8 @@ Must not match:
 - `the first pass over the array` (descriptive prose, no numeral)
 
 The numeral gate removes most verb and descriptive-noun collisions (`increment`, `cycle`, `pass`, `level`). Residual risk sits with `stage`/`step` in infra config and `epoch` in ML code; the scoping rule above handles those.
+
+Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same tell and can be flagged at low severity in plan and design markdown; exclude ordinary numbered-list items and changelog version headings.
 
 ## Sources
 
