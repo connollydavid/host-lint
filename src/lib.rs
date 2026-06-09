@@ -63,9 +63,30 @@ pub fn check_line(line: &str) -> Option<String> {
     None
 }
 
+pub fn check_bare_numeral_header(line: &str) -> Option<String> {
+    let t = line.trim();
+    let hashes = t.chars().take_while(|&c| c == '#').count();
+    if hashes == 0 || hashes > 6 {
+        return None;
+    }
+    let rest = t[hashes..].trim();
+    let parts: Vec<&str> = rest.split('.').collect();
+    if parts.len() > 2 {
+        // version-like heading (1.2.3), not a bare ordinal
+        return None;
+    }
+    if parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
+        return Some(rest.to_string());
+    }
+    None
+}
+
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
+    let markdown = source.to_lowercase().ends_with(".md");
     for (i, line) in input.lines().enumerate() {
-        if let Some(term) = check_line(line) {
+        let found = check_line(line)
+            .or_else(|| if markdown { check_bare_numeral_header(line) } else { None });
+        if let Some(term) = found {
             matches.push(Match {
                 file: source.to_string(),
                 line: i + 1,
