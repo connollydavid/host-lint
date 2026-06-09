@@ -1,4 +1,4 @@
-use host_lint::{check_line, is_numeral};
+use host_lint::{check_bare_numeral_header, check_line, is_numeral, scan_text};
 use proptest::prelude::*;
 
 proptest! {
@@ -96,5 +96,50 @@ proptest! {
     ) {
         let line = format!("{} {} {}: tokenize", prefix, term, numeral);
         prop_assert!(check_line(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn bare_numeral_headers_are_detected(
+        level in 1..7usize,
+        major in 0..1000u32,
+        minor in proptest::option::of(0..1000u32)
+    ) {
+        let rest = match minor {
+            Some(m) => format!("{}.{}", major, m),
+            None => format!("{}", major),
+        };
+        let line = format!("{} {}", "#".repeat(level), rest);
+        prop_assert!(check_bare_numeral_header(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn version_headings_are_not_bare_numeral_headers(
+        level in 1..7usize,
+        a in 0..100u32, b in 0..100u32, c in 0..100u32
+    ) {
+        let line = format!("{} {}.{}.{}", "#".repeat(level), a, b, c);
+        prop_assert!(check_bare_numeral_header(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn named_headers_are_not_bare_numeral_headers(
+        level in 1..7usize,
+        word in "[A-Za-z][a-z]{2,10}"
+    ) {
+        let line = format!("{} {}", "#".repeat(level), word);
+        prop_assert!(check_bare_numeral_header(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn bare_numeral_headers_only_flagged_in_markdown_sources(
+        major in 0..1000u32
+    ) {
+        let input = format!("# {}", major);
+        let mut md_matches = Vec::new();
+        scan_text(&input, "PLAN.md", &mut md_matches);
+        prop_assert!(!md_matches.is_empty(), "input: {}", input);
+        let mut rs_matches = Vec::new();
+        scan_text(&input, "main.rs", &mut rs_matches);
+        prop_assert!(rs_matches.is_empty(), "input: {}", input);
     }
 }

@@ -53,6 +53,23 @@ echo "refactor: clean up module" | $BINARY --stdin >/dev/null 2>&1 && ok "refact
 echo "docs: update README" | $BINARY --stdin >/dev/null 2>&1 && ok "docs: update README" || bad "docs: update README"
 echo "NOTE: this is intentional" | $BINARY --stdin >/dev/null 2>&1 && ok "NOTE: this is intentional" || bad "NOTE: this is intentional"
 
+# --- Bare-numeral headers (markdown files only) ---
+echo ""
+echo "--- Bare-numeral headers ---"
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+printf '## 3\n' > "$tmpdir/plan.md"
+$BINARY "$tmpdir/plan.md" >/dev/null 2>&1 && bad "## 3 in .md" || ok "## 3 in .md"
+printf '## 5.5\n' > "$tmpdir/plan.md"
+$BINARY "$tmpdir/plan.md" >/dev/null 2>&1 && bad "## 5.5 in .md" || ok "## 5.5 in .md"
+printf '## 1.2.3\n' > "$tmpdir/changelog.md"
+$BINARY "$tmpdir/changelog.md" >/dev/null 2>&1 && ok "## 1.2.3 version heading" || bad "## 1.2.3 version heading"
+printf '## Error handling\n' > "$tmpdir/plan.md"
+$BINARY "$tmpdir/plan.md" >/dev/null 2>&1 && ok "## named header" || bad "## named header"
+printf '# 3 retries by default\n' > "$tmpdir/script.sh"
+$BINARY "$tmpdir/script.sh" >/dev/null 2>&1 && ok "numeral comment in .sh" || bad "numeral comment in .sh"
+
 # --- JSON output test ---
 echo ""
 echo "--- JSON output ---"

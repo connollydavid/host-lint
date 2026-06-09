@@ -65,6 +65,18 @@ Rule NumeralGate {
     ensures: no Match when term is followed by non-numeral word
 }
 
+rule BareNumeralHeader {
+    when: line: Line.created
+        and line.source ends_with ".md"
+    let t = line.text.trim
+    let hashes = leading "#" count of t where 1 <= count <= 6
+    let rest = t after hashes, trimmed
+    ensures: Match.created(line: line, term: rest)
+        when rest matches digits optionally followed by "." digits
+    ensures: no Match when rest has more than one "." -- version-like heading (1.2.3)
+    ensures: no Match when line.source does not end_with ".md"
+}
+
 invariant OrdinalNotNumeral {
     for ordinal in ["first", "second", "third", "fourth", "fifth",
                     "sixth", "seventh", "eighth", "ninth", "tenth"]:
