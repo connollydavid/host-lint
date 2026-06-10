@@ -88,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build, conformance, test]
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Download all binaries
