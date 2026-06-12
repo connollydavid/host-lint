@@ -44,7 +44,14 @@ echo "Phase 1: setup" | ./host-lint --stdin
 
 # Scan all tracked files in a repo
 ./host-lint --all
+
+# Scan every commit message in the repo's history
+./host-lint --log
 ```
+
+### Adoption / upgrade audit
+
+Hooks only gate new commits, and rules grow over time, so run a one-shot audit when installing the skill into an existing repo or after upgrading the binary: `./host-lint --all` (fix flagged live files) and `./host-lint --log` (history findings — informational by default). If the user opts to clean history, guide the archive-then-rewrite flow from the README: create and push an archive branch preserving the original history, then `git commit --amend` (tip) or rebase/filter-repo (deeper) and force-push with lease. Link each replaced commit to its replacement with a `Superseded-by: <new-sha>` trailer via `git notes add` (push `refs/notes/commits` too) so the archive stays coherent. Never rewrite without archiving first or on branches the user does not control.
 
 ### As an agent skill
 
