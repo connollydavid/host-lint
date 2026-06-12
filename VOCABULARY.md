@@ -170,6 +170,44 @@ The numeral gate removes most verb and descriptive-noun collisions (`increment`,
 
 Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same tell and can be flagged at low severity in plan and design markdown; exclude ordinary numbered-list items and changelog version headings.
 
+## 5. Sibling tell: internal tracking codes used as names
+
+A second tell class, distinct from the phase-synonym: an internal review or triage label (`B1`, `N2`, `finding #7`) cited in a commit subject or comment as if it were a name. The label is a working-memory handle scoped to one review run; it carries no meaning once that review scrolls off. The positive rule, as in the rewrite dictionary above: promote every finding to a durable identity — a descriptive technical name, or a filed issue — then reference that identity. The review label is the handle used while triaging, never the handle that ships.
+
+| Working-memory label (never emit) | Durable identity (emit this) |
+|---|---|
+| `ci: fix the guard (review B1)` | `ci: fix the no-OS-comm guard: nm regex fails open on __imp__ thunks` |
+| `ci: fix the guard (review B1)` | `ci: fix the no-OS-comm guard regex (fixes #NN)` — after filing the finding as an issue |
+| `addresses blocker 1` | name the defect, or `closes #NN` |
+
+Traceability and idiom are not in tension: `fixes #NN` is already allowlisted, so filing the finding as an issue yields a clean, durable, citeable handle. The linter flag below is only the backstop that catches a slip — it fires when a finding was never promoted to a real identity.
+
+Flag `review`, `finding`, or `blocker` immediately followed by a `#N` or a letter+digit code, case-insensitive. Matching is token-based, and the token rule is the spec: split the line on whitespace; trim surrounding punctuation from the noun token (hyphens kept, so `code-review` is not the noun); trim surrounding punctuation from the code token except a leading `#`. The code must then be exactly `#` plus digits, or one letter plus digits — codes with attachments (`b1's`, `#7/8`) do not match.
+
+A shell approximation, looser than the token rule at both boundaries (it misses punctuation-trimmed forms like a parenthesised code, and matches hyphen-joined nouns the token rule does not):
+
+```
+(^|[^a-z])(review|finding|blocker)\s+(#[0-9]+|[a-z][0-9]+)([^a-z0-9]|$)
+```
+
+The letter/`#` gate separates the code-as-name tell from ordinary use of the same nouns. The noun set deliberately excludes `closes` and `fixes`, so GitHub issue references stay clean — `fixes #NN` is the allowlisted way to carry traceability into a subject, and filing the finding as an issue is the sanctioned alternative to naming it descriptively.
+
+Should match:
+
+- `ci: fix the guard regex (review B1)`
+- `addresses finding #7`
+- `blocker B2 resolved`
+- `addresses review (B1)` (punctuation around the code is trimmed)
+
+Must not match:
+
+- `review 3 files` (bare numeral after the noun, not a code)
+- `finding 0 results`
+- `fixes #18` / `closes #35` (GitHub refs; the verbs are not in the noun set)
+- `Finding #B1` (letter-prefixed code after `#`; plan-document convention, not this tell)
+
+Known gate limits, accepted for parity with the field-tested wrapper rule: version, quarter, and infrastructure tokens (`review v2`, `review q3`, `review s3`) match the letter+digit shape and will flag; the allowlisted `REVIEW` code-tag (section 2) followed by a letter+digit identifier also flags — when those collide, this rule wins.
+
 ## Sources
 
 - Conventional Commits v1.0.0: https://www.conventionalcommits.org/en/v1.0.0/
