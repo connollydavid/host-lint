@@ -71,7 +71,13 @@ git commit --amend                            # tell in the tip commit only
 # deeper history: git rebase -i <base>, rewording flagged commits,
 # or git filter-repo --message-callback for bulk rewrites
 git push --force-with-lease
+
+# link each replaced commit to its replacement, so the archive stays coherent
+git notes add -m "Superseded-by: <new-sha>" <old-sha>
+git push origin refs/notes/commits
 ```
+
+Each replaced commit gets a `Superseded-by:` trailer via `git notes` — the archived sha then points at its rewrite in `git log --notes` without itself being rewritten.
 
 Rewriting changes every descendant sha: collaborators must re-clone or hard-reset, and external references to old shas go stale. Only do this on branches you control.
 
