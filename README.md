@@ -57,10 +57,23 @@ Hooks only gate new commits, and detection rules grow over time, so a project th
 
 ```bash
 ./no-phase --all   # live files: fix what it flags
-./no-phase --log   # commit history: informational — history is immutable, rewriting it is usually wrong
+./no-phase --log   # commit history: informational by default
 ```
 
 `--log` reports findings as `<short-sha>:<line>: <text> (<term>)`, one record per offending commit message line.
+
+By default, treat history findings as informational and leave history alone. If you do choose to clean them, archive the original history first, then rewrite:
+
+```bash
+git branch archive/pre-no-phase-audit         # preserve the original history
+git push origin archive/pre-no-phase-audit
+git commit --amend                            # tell in the tip commit only
+# deeper history: git rebase -i <base>, rewording flagged commits,
+# or git filter-repo --message-callback for bulk rewrites
+git push --force-with-lease
+```
+
+Rewriting changes every descendant sha: collaborators must re-clone or hard-reset, and external references to old shas go stale. Only do this on branches you control.
 
 ### Pre-commit Hook
 
