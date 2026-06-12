@@ -77,6 +77,31 @@ rule BareNumeralHeader {
     ensures: no Match when line.source does not end_with ".md"
 }
 
+entity ReviewCode {
+    value: String -- "#" + digits (e.g. "#7") or one letter + digits (e.g. "B1", "N2")
+    kind: issue_style | letter_digit
+}
+
+rule DetectInternalCodeAsName {
+    when: line: Line.created
+    let words = line.text.split_whitespace()
+    let match = first word in words where:
+        word.lowercase.trim_punctuation in ["review", "finding", "blocker"]
+        and words[next].trim_punctuation_keeping_leading_hash is ReviewCode
+    ensures: Match.created(line: line, term: match.term, numeral: words[next])
+        when match != null
+}
+
+invariant BareNumeralNotReviewCode {
+    for word in String where word contains only ASCII digits:
+        word is NOT a valid ReviewCode -- "review 3 files" stays clean
+}
+
+invariant GithubRefsClean {
+    for verb in ["closes", "fixes"]:
+        verb is NOT in DetectInternalCodeAsName noun set -- "fixes #18" stays clean
+}
+
 invariant OrdinalNotNumeral {
     for ordinal in ["first", "second", "third", "fourth", "fifth",
                     "sixth", "seventh", "eighth", "ninth", "tenth"]:
