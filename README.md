@@ -28,6 +28,8 @@ Does NOT flag:
 - `fixes #18` / `closes #35` — GitHub issue refs, the idiomatic durable reference
 - `review 3 files` — bare numeral after the noun, not a code
 
+Known limitation: the matcher is offline and cannot validate `#N` against the repository's real issues. An internal tracker ID dressed as a GitHub ref (a `#N` that resolves to nothing) passes by design — catching it is review discipline, not a linter gate. See VOCABULARY.md.
+
 ## Usage
 
 ### CLI
