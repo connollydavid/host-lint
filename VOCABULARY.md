@@ -182,6 +182,8 @@ A second tell class, distinct from the phase-synonym: an internal review or tria
 
 Traceability and idiom are not in tension: `fixes #NN` is already allowlisted, so filing the finding as an issue yields a clean, durable, citeable handle. The linter flag below is only the backstop that catches a slip — it fires when a finding was never promoted to a real identity.
 
+The escape hatch carries an obligation: cite issue numbers that exist. A bare `#N` taken from a private task tracker is the same code-as-name tell dressed as a GitHub reference — and worse, it renders as a resolvable link that resolves to nothing. The offline matcher cannot tell a real `#N` from a fake one (that would require resolving the number against the repository's live issue set), so a fake reference passes the linter by design. `#N` is not auto-vetted; verifying that the number resolves is review discipline, not a gate the engine provides.
+
 Flag `review`, `finding`, or `blocker` immediately followed by a `#N` or a letter+digit code, case-insensitive. Matching is token-based, and the token rule is the spec: split the line on whitespace; trim surrounding punctuation from the noun token (hyphens kept, so `code-review` is not the noun); trim surrounding punctuation from the code token except a leading `#`. The code must then be exactly `#` plus digits, or one letter plus digits — codes with attachments (`b1's`, `#7/8`) do not match.
 
 A shell approximation, looser than the token rule at both boundaries (it misses punctuation-trimmed forms like a parenthesised code, and matches hyphen-joined nouns the token rule does not):
