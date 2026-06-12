@@ -32,6 +32,12 @@ echo "Wave 2 of rollout" | $BINARY --stdin >/dev/null 2>&1 && bad "Wave 2 of rol
 echo "Batch 3 processing" | $BINARY --stdin >/dev/null 2>&1 && bad "Batch 3 processing" || ok "Batch 3 processing"
 echo "## Part 1: intro" | $BINARY --stdin >/dev/null 2>&1 && bad "## Part 1: intro" || ok "## Part 1: intro"
 
+# Internal code-as-name tell (VOCABULARY.md, internal tracking codes)
+echo "ci: fix the no-OS-comm guard's fail-open nm regex (review B1)" | $BINARY --stdin >/dev/null 2>&1 && bad "ci: ... (review B1)" || ok "ci: ... (review B1)"
+echo "addresses finding #7" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses finding #7" || ok "addresses finding #7"
+echo "blocker B2 resolved" | $BINARY --stdin >/dev/null 2>&1 && bad "blocker B2 resolved" || ok "blocker B2 resolved"
+echo "addresses review (B1)" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses review (B1)" || ok "addresses review (B1)"
+
 # --- Must not match (expect exit 0) ---
 echo ""
 echo "--- Must not match (expect clean) ---"
@@ -52,6 +58,13 @@ echo "PTAL" | $BINARY --stdin >/dev/null 2>&1 && ok "PTAL" || bad "PTAL"
 echo "refactor: clean up module" | $BINARY --stdin >/dev/null 2>&1 && ok "refactor: clean up module" || bad "refactor: clean up module"
 echo "docs: update README" | $BINARY --stdin >/dev/null 2>&1 && ok "docs: update README" || bad "docs: update README"
 echo "NOTE: this is intentional" | $BINARY --stdin >/dev/null 2>&1 && ok "NOTE: this is intentional" || bad "NOTE: this is intentional"
+
+# Internal code-as-name gates (VOCABULARY.md, internal tracking codes)
+echo "review 3 files" | $BINARY --stdin >/dev/null 2>&1 && ok "review 3 files" || bad "review 3 files"
+echo "finding 0 results" | $BINARY --stdin >/dev/null 2>&1 && ok "finding 0 results" || bad "finding 0 results"
+echo "fixes #18" | $BINARY --stdin >/dev/null 2>&1 && ok "fixes #18" || bad "fixes #18"
+echo "closes #35" | $BINARY --stdin >/dev/null 2>&1 && ok "closes #35" || bad "closes #35"
+echo "Finding #B1 was fixed upstream" | $BINARY --stdin >/dev/null 2>&1 && ok "Finding #B1 was fixed upstream" || bad "Finding #B1 was fixed upstream"
 
 # --- Bare-numeral headers (markdown files only) ---
 echo ""

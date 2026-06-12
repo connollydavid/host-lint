@@ -14,12 +14,19 @@ Flags numbered phase-synonym patterns:
 - `feat: phase 2 of auth refactor` — conventional commit with phase tell
 - `Stage II, data migration` — Roman numeral
 
+Also flags internal tracking codes used as names (a sibling tell):
+
+- `ci: fix the guard regex (review B1)` — review label as a name
+- `addresses finding #7` — triage code instead of a description
+
 Does NOT flag:
 
 - `feat: add parser` — conventional commit, no phase tell
 - `TODO: handle null input` — code tag
 - `increment the retry counter` — verb, no numeral
 - `the first pass over the array` — ordinal, not numeral
+- `fixes #18` / `closes #35` — GitHub issue refs, the idiomatic durable reference
+- `review 3 files` — bare numeral after the noun, not a code
 
 ## Usage
 

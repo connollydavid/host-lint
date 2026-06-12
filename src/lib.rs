@@ -5,6 +5,8 @@ const FLAG_TERMS: &[&str] = &[
     "leg", "lap", "level",
 ];
 
+const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
+
 const CI_PATTERNS: &[&str] = &[
     ".github/workflows",
     ".gitlab-ci",
@@ -36,6 +38,22 @@ pub fn is_numeral(word: &str) -> bool {
     upper.len() <= 4 && upper.chars().all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
 }
 
+pub fn is_review_code(word: &str) -> bool {
+    // "#7" (issue-style number) or "b1" (a severity letter + number). A bare
+    // numeral ("3") is NOT a code, so "review 3 files" stays clean.
+    if let Some(digits) = word.strip_prefix('#') {
+        return !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit());
+    }
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {
+            let rest = chars.as_str();
+            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+        }
+        _ => false,
+    }
+}
+
 pub fn check_line(line: &str) -> Option<String> {
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -55,6 +73,19 @@ pub fn check_line(line: &str) -> Option<String> {
                 if is_numeral(next_clean) {
                     let orig_word = words[i].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
                     return Some(orig_word.to_string());
+                }
+            }
+        }
+        // Sibling tell: an internal tracking code used as a name (a noun from
+        // REVIEW_CODE_TERMS immediately followed by a hash+digits or
+        // letter+digits label). The trim keeps a leading "#" so issue-style
+        // codes survive; GitHub refs never match because closes/fixes are
+        // not in the noun set.
+        if REVIEW_CODE_TERMS.contains(&clean) {
+            if let Some(next) = words.get(i + 1) {
+                let code = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '#');
+                if is_review_code(code) {
+                    return Some(clean.to_string());
                 }
             }
         }

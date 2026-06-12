@@ -142,4 +142,41 @@ proptest! {
         scan_text(&input, "main.rs", &mut rs_matches);
         prop_assert!(rs_matches.is_empty(), "input: {}", input);
     }
+
+    #[test]
+    fn review_noun_followed_by_letter_digit_code_is_detected(
+        term in "review|finding|blocker",
+        letter in "[a-z]",
+        digits in "[0-9]{1,3}"
+    ) {
+        let line = format!("fix the guard regex ({} {}{})", term, letter, digits);
+        prop_assert!(check_line(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn review_noun_followed_by_issue_code_is_detected(
+        term in "review|finding|blocker",
+        digits in "[0-9]{1,4}"
+    ) {
+        let line = format!("addresses {} #{}", term, digits);
+        prop_assert!(check_line(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn review_noun_followed_by_bare_numeral_is_clean(
+        term in "review|finding|blocker",
+        digits in "[0-9]{1,3}"
+    ) {
+        let line = format!("{} {} files", term, digits);
+        prop_assert!(check_line(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn github_issue_refs_are_clean(
+        verb in "closes|fixes",
+        digits in "[0-9]{1,4}"
+    ) {
+        let line = format!("{} #{}", verb, digits);
+        prop_assert!(check_line(&line).is_none(), "line: {}", line);
+    }
 }
