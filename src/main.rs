@@ -74,6 +74,36 @@ fn run_all_files(matches: &mut Vec<Match>) {
     }
 }
 
+fn run_log(matches: &mut Vec<Match>) {
+    let output = match process::Command::new("git")
+        .args(["log", "-z", "--format=%H%n%B"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!("no-phase: git log failed: {}", String::from_utf8_lossy(&o.stderr).trim());
+            process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("no-phase: failed to run git: {}", e);
+            process::exit(2);
+        }
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    for record in text.split('\0') {
+        let record = record.trim_end_matches('\n');
+        if record.is_empty() {
+            continue;
+        }
+        let (sha, message) = match record.split_once('\n') {
+            Some((s, m)) => (s, m),
+            None => (record, ""),
+        };
+        let label = if sha.len() >= 7 { &sha[..7] } else { sha };
+        scan_text(message, label, matches);
+    }
+}
+
 fn walkdir_simple(dir: &str) -> Vec<String> {
     let mut files = Vec::new();
     let entries = match fs::read_dir(dir) {
@@ -101,6 +131,7 @@ fn main() {
     let mut stdin_flag = false;
     let mut json_flag = false;
     let mut all_flag = false;
+    let mut log_flag = false;
     let mut files: Vec<String> = Vec::new();
 
     for arg in &args[1..] {
@@ -108,6 +139,7 @@ fn main() {
             "--stdin" => stdin_flag = true,
             "--json" => json_flag = true,
             "--all" => all_flag = true,
+            "--log" => log_flag = true,
             _ => files.push(arg.clone()),
         }
     }
@@ -120,8 +152,10 @@ fn main() {
         scan_text(&input, "stdin", &mut matches);
     } else if all_flag {
         run_all_files(&mut matches);
+    } else if log_flag {
+        run_log(&mut matches);
     } else if files.is_empty() {
-        eprintln!("Usage: no-phase [--stdin] [--json] [--all] [files...]");
+        eprintln!("Usage: no-phase [--stdin] [--json] [--all] [--log] [files...]");
         process::exit(2);
     } else {
         for f in &files {

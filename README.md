@@ -46,7 +46,21 @@ echo "Phase 1: setup" | ./no-phase --stdin
 
 # Scan all tracked files
 ./no-phase --all
+
+# Scan every commit message in the repository's history
+./no-phase --log
 ```
+
+### Adopting or upgrading
+
+Hooks only gate new commits, and detection rules grow over time, so a project that adopts the skill late — or upgrades to a newer binary — may already contain tells the current rules would flag. Run a one-shot audit after install or upgrade:
+
+```bash
+./no-phase --all   # live files: fix what it flags
+./no-phase --log   # commit history: informational — history is immutable, rewriting it is usually wrong
+```
+
+`--log` reports findings as `<short-sha>:<line>: <text> (<term>)`, one record per offending commit message line.
 
 ### Pre-commit Hook
 

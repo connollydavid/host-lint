@@ -44,7 +44,14 @@ echo "Phase 1: setup" | ./no-phase --stdin
 
 # Scan all tracked files in a repo
 ./no-phase --all
+
+# Scan every commit message in the repo's history
+./no-phase --log
 ```
+
+### Adoption / upgrade audit
+
+Hooks only gate new commits, and rules grow over time, so run a one-shot audit when installing the skill into an existing repo or after upgrading the binary: `./no-phase --all` (fix flagged live files) and `./no-phase --log` (informational — history is immutable; do not rewrite it just to clean tells).
 
 ### As an agent skill
 

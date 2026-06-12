@@ -93,6 +93,23 @@ else
     bad "JSON output missing term"
 fi
 
+# --- History scan (--log) ---
+echo ""
+echo "--- History scan (--log) ---"
+BINARY_ABS="$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")"
+repo="$tmpdir/log-repo"
+git init -q "$repo"
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "feat: add parser"
+(cd "$repo" && "$BINARY_ABS" --log >/dev/null 2>&1) && ok "--log clean history" || bad "--log clean history"
+git -C "$repo" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "docs: phase 2 of rollout"
+(cd "$repo" && "$BINARY_ABS" --log >/dev/null 2>&1) && bad "--log flagged history" || ok "--log flagged history"
+out=$(cd "$repo" && "$BINARY_ABS" --log 2>&1) || true
+if echo "$out" | grep -qE '^[0-9a-f]{7}:'; then
+    ok "--log output labelled with commit sha"
+else
+    bad "--log output labelled with commit sha"
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="
