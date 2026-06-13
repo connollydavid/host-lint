@@ -241,7 +241,20 @@ pub fn check_bare_numeral_header(line: &str) -> Option<String> {
 
 // Classify a single line, preferring the most severe outcome: a confirmed tell
 // (flag) wins over the bare-numeral degenerate form (warn).
+/// Co-Authored-By is a discretionary attribution trailer: a co-author's name
+/// or a tool's version string (e.g. "Claude Opus 4.8") is the author's to set,
+/// not ours to police. Respect it — never flag or warn on this line.
+fn is_coauthor_trailer(line: &str) -> bool {
+    let key = "co-authored-by:";
+    line.trim_start()
+        .get(..key.len())
+        .is_some_and(|p| p.eq_ignore_ascii_case(key))
+}
+
 pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
+    if is_coauthor_trailer(line) {
+        return None;
+    }
     if let Some(t) = check_line(line) {
         return Some((Severity::Flag, t));
     }

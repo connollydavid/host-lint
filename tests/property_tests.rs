@@ -324,3 +324,17 @@ fn issue_10_clean_cases() {
         assert_eq!(classify_line(line, false), None, "expected clean for: {}", line);
     }
 }
+
+#[test]
+fn coauthored_by_trailers_are_exempt() {
+    // A discretionary attribution trailer is skipped entirely, neither flagged
+    // nor warned — even a phase-like co-author name. Dealer's choice field.
+    for line in [
+        "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+        "co-authored-by: someone 2.1",
+        "  Co-Authored-By: Phase 2 Bot <bot@example.com>",
+    ] {
+        assert_eq!(classify_line(line, false), None, "expected exempt for: {}", line);
+        assert_eq!(classify_line(line, true), None, "expected exempt (md) for: {}", line);
+    }
+}
