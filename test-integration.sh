@@ -165,6 +165,14 @@ echo "$warn_json" | grep -q '"severity": "warn"' && ok "JSON severity warn" || b
 flag_json=$(printf '%s' 'phase 2 of rollout' | $BINARY --stdin --json 2>/dev/null) || true
 echo "$flag_json" | grep -q '"severity": "flag"' && ok "JSON severity flag" || bad "JSON severity flag"
 
+# --- Co-Authored-By trailer exemption (expect clean, rc=0) ---
+echo ""
+echo "--- Co-Authored-By trailers exempt ---"
+for s in 'Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>' 'co-authored-by: someone 2.1' 'Co-Authored-By: Phase 2 Bot <bot@example.com>'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "exempt: $s" || bad "exempt: $s (rc=$rc)"
+done
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="
