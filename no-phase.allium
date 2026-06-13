@@ -11,6 +11,7 @@ entity Match {
     line: Line
     term: String -- the flag term that matched (e.g. "phase")
     numeral: String -- the numeral that triggered detection (e.g. "1", "II")
+    severity: flag | warn -- flag blocks (exit 1); warn is advisory (exit 3)
 }
 
 entity FlagTerm {
@@ -20,8 +21,8 @@ entity FlagTerm {
 }
 
 entity Numeral {
-    value: String -- Arabic digits (e.g. "1", "42") or Roman numerals (e.g. "I", "II", "IV", "X")
-    kind: arabic | roman
+    value: String -- Arabic digits (e.g. "1", "42"), a single-decimal numeral (e.g. "5.5"), or Roman numerals (e.g. "I", "II", "IV", "X")
+    kind: arabic | decimal | roman
 }
 
 entity Ordinal {
@@ -44,8 +45,19 @@ rule DetectPhaseSynonym {
         word.lowercase.trim_punctuation in FlagTerm.values
         and (words[next].trim_punctuation is Numeral
              or words[next+1].trim_punctuation is Numeral)
-    ensures: Match.created(line: line, term: match.term, numeral: match.numeral)
+    ensures: Match.created(line: line, term: match.term, numeral: match.numeral, severity: flag)
         when match != null
+}
+
+rule DetectLabelPrefix {
+    when: line: Line.created
+    let s = line.text.trim_start, with leading comment and header markers removed
+        (one of: "///", "//!", "//", "/**", "/*", "--", "*", "#")
+    let code = leading run of digits-and-dots of s
+    ensures: Match.created(line: line, term: code, severity: flag)
+        when code is Numeral
+            and s after code starts with ":" followed by whitespace or end-of-line
+    -- the colon-then-space gate excludes a clock time ("5:30 standup")
 }
 
 rule RejectOrdinals {
@@ -71,10 +83,33 @@ rule BareNumeralHeader {
     let t = line.text.trim
     let hashes = leading "#" count of t where 1 <= count <= 6
     let rest = t after hashes, trimmed
-    ensures: Match.created(line: line, term: rest)
+    ensures: Match.created(line: line, term: rest, severity: flag)
         when rest matches digits optionally followed by "." digits
     ensures: no Match when rest has more than one "." -- version-like heading (1.2.3)
     ensures: no Match when line.source does not end_with ".md"
+}
+
+entity FilingNoun {
+    value: String -- one of: work-item, workitem, wi
+}
+
+rule DetectBareNumeralLabel {
+    when: line: Line.created
+        and no flag-severity Match on line -- flag wins over warn
+    let words = line.text.split_whitespace()
+    -- W1: a filing-code noun used with a numbered label
+    let w1 = first word in words where:
+        word.lowercase.trim_punctuation in FilingNoun.values
+        and (words[next] or words[next+1]).trim_punctuation is Numeral
+    -- W2: a bare single-decimal code used as a name, outside version/quantity context
+    let w2 = first word in words where:
+        word has no ASCII letter
+        and word.trim_to_digits_and_dots matches digits "." digits (exactly one dot)
+        and word does not end with "%"
+        and words[next] is not a unit (s, sec, ms, min, h, hr, gb, mb, kb, tb, ...)
+        and words[prev] is not a version/cross-reference word (v, version, python, figure, table, ...)
+    ensures: Match.created(line: line, term: (w1 or w2), severity: warn)
+        when w1 != null or w2 != null
 }
 
 entity ReviewCode {
@@ -88,7 +123,7 @@ rule DetectInternalCodeAsName {
     let match = first word in words where:
         word.lowercase.trim_punctuation in ["review", "finding", "blocker"]
         and words[next].trim_punctuation_keeping_leading_hash is ReviewCode
-    ensures: Match.created(line: line, term: match.term, numeral: words[next])
+    ensures: Match.created(line: line, term: match.term, numeral: words[next], severity: flag)
         when match != null
 }
 

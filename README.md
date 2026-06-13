@@ -13,11 +13,21 @@ Flags numbered phase-synonym patterns:
 - `Step 3 of 5` — prose
 - `feat: phase 2 of auth refactor` — conventional commit with phase tell
 - `Stage II, data migration` — Roman numeral
+- `entry point (Phase 5.0)` — decimal numeral, any position
+- `5.5: exec/pty tools` — bare numeral used as a label prefix
 
 Also flags internal tracking codes used as names (a sibling tell):
 
 - `ci: fix the guard regex (review B1)` — review label as a name
 - `addresses finding #7` — triage code instead of a description
+
+Warns (advisory, exit 3) on the bare-numeral degenerate form — the noun elided, a bare numeral floating free where it is harder to tell from ordinary use:
+
+- `as decided in 2.1` — bare dotted code used as a name
+- `exec tools (5.5)` — parenthetical numeral label
+- `work-item 5.3` — filing-code noun with a numbered label
+
+A warning asks the author (or agent) to reconsider; it does not block a commit hook.
 
 Does NOT flag:
 
@@ -27,6 +37,7 @@ Does NOT flag:
 - `the first pass over the array` — ordinal, not numeral
 - `fixes #18` / `closes #35` — GitHub issue refs, the idiomatic durable reference
 - `review 3 files` — bare numeral after the noun, not a code
+- `bump to v2.1` / `Python 3.11` / `5.5 seconds` — version strings and quantities
 
 Known limitation: the matcher is offline and cannot validate `#N` against the repository's real issues. An internal tracker ID dressed as a GitHub ref (a `#N` that resolves to nothing) passes by design — catching it is review discipline, not a linter gate. See VOCABULARY.md.
 

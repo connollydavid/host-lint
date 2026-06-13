@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use no_phase::{Match, scan_text, is_ci_file, is_scannable};
+use no_phase::{Match, Severity, scan_text, is_ci_file, is_scannable};
 
 fn scan_file(path: &Path, matches: &mut Vec<Match>) {
     if !path.is_file() {
@@ -26,7 +26,10 @@ fn scan_file(path: &Path, matches: &mut Vec<Match>) {
 
 fn output_text(matches: &[Match]) {
     for m in matches {
-        eprintln!("{}:{}: {} ({})", m.file, m.line, m.text, m.term);
+        match m.severity {
+            Severity::Warn => eprintln!("{}:{}: warning: {} ({})", m.file, m.line, m.text, m.term),
+            Severity::Flag => eprintln!("{}:{}: {} ({})", m.file, m.line, m.text, m.term),
+        }
     }
 }
 
@@ -42,7 +45,12 @@ fn serde_json_like(matches: &[Match]) -> String {
         out.push_str(&format!("\"file\": \"{}\", ", escape_json(&m.file)));
         out.push_str(&format!("\"line\": {}, ", m.line));
         out.push_str(&format!("\"text\": \"{}\", ", escape_json(&m.text)));
-        out.push_str(&format!("\"term\": \"{}\"", escape_json(&m.term)));
+        out.push_str(&format!("\"term\": \"{}\", ", escape_json(&m.term)));
+        let severity = match m.severity {
+            Severity::Warn => "warn",
+            Severity::Flag => "flag",
+        };
+        out.push_str(&format!("\"severity\": \"{}\"", severity));
         out.push_str("}");
         if i < matches.len() - 1 {
             out.push(',');
@@ -175,7 +183,10 @@ fn main() {
         output_text(&matches);
     }
 
-    if !matches.is_empty() {
+    if matches.iter().any(|m| m.severity == Severity::Flag) {
         process::exit(1);
+    }
+    if matches.iter().any(|m| m.severity == Severity::Warn) {
+        process::exit(3);
     }
 }

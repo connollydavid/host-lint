@@ -19,10 +19,13 @@ case "$(basename "$0")" in
         if [ -n "$staged_files" ]; then
             while IFS= read -r file; do
                 if [ -f "$file" ]; then
-                    result=$("$BINARY" "$file" 2>&1)
-                    if [ $? -ne 0 ]; then
+                    result=$("$BINARY" "$file" 2>&1); rc=$?
+                    # rc 1 = confirmed tell (block); rc 3 = warning (advisory, print only)
+                    if [ $rc -eq 1 ]; then
                         echo "$result" >&2
                         EXIT_CODE=1
+                    elif [ $rc -eq 3 ]; then
+                        echo "$result" >&2
                     fi
                 fi
             done <<< "$staged_files"
@@ -31,10 +34,13 @@ case "$(basename "$0")" in
     commit-msg)
         msg_file="$1"
         if [ -f "$msg_file" ]; then
-            result=$("$BINARY" --stdin < "$msg_file" 2>&1)
-            if [ $? -ne 0 ]; then
+            result=$("$BINARY" --stdin < "$msg_file" 2>&1); rc=$?
+            # rc 1 = confirmed tell (block); rc 3 = warning (advisory, print only)
+            if [ $rc -eq 1 ]; then
                 echo "$result" >&2
                 EXIT_CODE=1
+            elif [ $rc -eq 3 ]; then
+                echo "$result" >&2
             fi
         fi
         ;;
