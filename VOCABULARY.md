@@ -132,10 +132,12 @@ These fill nearby slots but are not phase-synonyms. Letting the linter treat the
 
 Scope the linter to commit subjects, plan and design markdown headers, and comments in application source. Exclude CI/CD pipeline definitions and Dockerfiles, where `stage` and `step` are reserved keywords.
 
-Core pattern, case-insensitive, word-boundary, numeral-gated:
+Core pattern, case-insensitive, word-boundary, numeral-gated. The numeral is an
+Arabic integer, a single-decimal milestone numeral (`5.5`), or a Roman numeral;
+a version-like form with two or more dots (`1.2.3`) is not a numeral:
 
 ```
-\b(phase|stage|step|part|pass|round|iteration|sprint|cycle|increment|wave|batch|section)\s+(\d+|[ivxlcdm]+)\b
+\b(phase|stage|step|part|pass|round|iteration|sprint|cycle|increment|wave|batch|section)\s+(\d+(\.\d+)?|[ivxlcdm]+)\b
 ```
 
 Heading and leading-comment variants:
@@ -169,6 +171,19 @@ Must not match:
 The numeral gate removes most verb and descriptive-noun collisions (`increment`, `cycle`, `pass`, `level`). Residual risk sits with `stage`/`step` in infra config and `epoch` in ML code; the scoping rule above handles those.
 
 Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same tell and can be flagged at low severity in plan and design markdown; exclude ordinary numbered-list items and changelog version headings.
+
+### Two severities: flag and warn
+
+The matcher reports at two severities. A **flag** (exit 1) is a confirmed tell and blocks a commit hook. A **warn** (exit 3) is the bare-numeral degenerate form caught where it is harder to tell from ordinary use; it is advisory — a hook prints it and lets the commit through, and an agent treats it as a prompt to reconsider, not a hard stop. A line is classified at its most severe outcome (flag wins over warn).
+
+Flag, in addition to the noun-gated and bare-numeral-header patterns above:
+
+- **Leading label prefix** — a bare numeral used as a name at the start of a subject line, markdown header, or comment, followed by a colon and whitespace: `5.5: exec/pty tools`, `// 5.5: the pty exec tool`, `## 5.5: error handling`. The colon-then-space requirement separates a label from a clock time (`5:30 standup` does not match).
+
+Warn — the degenerate form where the noun is elided and the bare numeral floats free, which collides with version strings and quantities, so it is advisory rather than blocking:
+
+- **Filing-code noun + numeral** — `work-item`, `workitem`, or `wi` followed by a numeral (`work-item 5.3`). These nouns are not phase-synonyms; the warn catches the milestone-code register without hard-flagging ordinary use.
+- **Bare dotted code** — a standalone `N.N` token used as a name (`as decided in 2.1`, `exec tools (5.5)`, `the tools arrive in 5.3`). A token carrying a letter (`v2.1`) is a version and is skipped; a trailing `%` or a following unit (`5.5 seconds`) marks a quantity and is skipped; a preceding version or cross-reference word (`python 3.11`, `figure 2.1`) is skipped. The warn is deliberately recall-biased — it will still warn on some version or figure references (`upgrade to 2.1`), which is acceptable because it only asks the author to reconsider.
 
 ## 5. Sibling tell: internal tracking codes used as names
 

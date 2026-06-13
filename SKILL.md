@@ -59,12 +59,14 @@ Run the binary against the target and act on results:
 
 1. Identify what to check (commit message, staged files, or specific files)
 2. Run `no-phase` with appropriate flags
-3. If exits 0, clean. If exits 1, flag found — report matches to user.
+3. If exits 0, clean. If exits 1, a confirmed tell — report matches to the user. If exits 3, a bare-numeral warning (advisory) — reconsider the flagged numbered labels and rewrite them with descriptive names where it improves the text, but it does not block.
 
 ## Exit codes
 
-- `0` — no phase-synonym tells found
-- `1` — one or more tells detected
+- `0` — clean, no tells found
+- `1` — one or more confirmed tells detected (blocks a commit hook)
+- `2` — usage error or `git` failure
+- `3` — warnings only: the bare-numeral degenerate form (`5.5:`, `(5.5)`, `work-item 5.3`). Advisory — a hook prints these and lets the commit through; an agent should reconsider them, not treat them as a hard stop.
 
 ## Portability notes
 
