@@ -51,7 +51,7 @@ fn serde_json_like(matches: &[Match]) -> String {
             Severity::Flag => "flag",
         };
         out.push_str(&format!("\"severity\": \"{}\"", severity));
-        out.push_str("}");
+        out.push('}');
         if i < matches.len() - 1 {
             out.push(',');
         }
