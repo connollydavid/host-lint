@@ -131,6 +131,40 @@ else
     bad "--all scans symlinked content once (got $count)"
 fi
 
+# --- Tier 1+2: decimal numerals and label prefix (expect flag, rc=1) ---
+echo ""
+echo "--- Decimal numerals + label prefix (expect flag) ---"
+for s in 'entry point (Phase 5.0).' '5.5: exec/pty tools' '// 5.5: the pty exec tool' '## 5.5: error handling' 'section 2.1'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 1 ] && ok "flag: $s" || bad "flag: $s (rc=$rc)"
+done
+
+# --- Tier 3: bare-numeral degenerate form (expect warn, rc=3) ---
+echo ""
+echo "--- Bare-numeral degenerate form (expect warn) ---"
+for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5.3' 'implements work-item 5.3'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
+done
+
+# --- Version / quantity not warned (expect clean, rc=0) ---
+echo ""
+echo "--- Version / quantity stay clean ---"
+for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "clean: $s" || bad "clean: $s (rc=$rc)"
+done
+
+# --- Warn output marker and JSON severity ---
+echo ""
+echo "--- Severity in output ---"
+warn_out=$(printf '%s' 'exec tools (5.5)' | $BINARY --stdin 2>&1) || true
+echo "$warn_out" | grep -q 'warning:' && ok "warn line marked 'warning:'" || bad "warn line marked 'warning:'"
+warn_json=$(printf '%s' 'exec tools (5.5)' | $BINARY --stdin --json 2>/dev/null) || true
+echo "$warn_json" | grep -q '"severity": "warn"' && ok "JSON severity warn" || bad "JSON severity warn"
+flag_json=$(printf '%s' 'phase 2 of rollout' | $BINARY --stdin --json 2>/dev/null) || true
+echo "$flag_json" | grep -q '"severity": "flag"' && ok "JSON severity flag" || bad "JSON severity flag"
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="

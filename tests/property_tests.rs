@@ -1,4 +1,7 @@
-use host_lint::{check_bare_numeral_header, check_line, is_numeral, scan_text};
+use host_lint::{
+    check_bare_numeral_header, check_label_prefix, check_line, check_warn, classify_line,
+    is_numeral, scan_text, Severity,
+};
 use proptest::prelude::*;
 
 proptest! {
@@ -178,5 +181,146 @@ proptest! {
     ) {
         let line = format!("{} #{}", verb, digits);
         prop_assert!(check_line(&line).is_none(), "line: {}", line);
+    }
+
+    // --- Tier 1: decimal numerals after a flag noun ---
+
+    #[test]
+    fn flag_term_followed_by_decimal_numeral_is_detected(
+        term in "phase|stage|step|part|section",
+        major in 0..100u32,
+        minor in 0..100u32
+    ) {
+        let line = format!("entry point ({} {}.{})", term, major, minor);
+        prop_assert!(check_line(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn single_decimal_is_a_numeral_but_version_is_not(
+        major in 0..100u32, minor in 0..100u32, patch in 0..100u32
+    ) {
+        let dec = format!("{}.{}", major, minor);
+        let ver = format!("{}.{}.{}", major, minor, patch);
+        prop_assert!(is_numeral(&dec), "dec: {}", dec);
+        prop_assert!(!is_numeral(&ver), "ver: {}", ver);
+    }
+
+    // --- Tier 2: leading label prefix (flag) ---
+
+    #[test]
+    fn leading_numeral_label_prefix_is_flagged(
+        marker in r"|// |/// |//! |# |## |-- |\* ",
+        major in 0..100u32,
+        minor in proptest::option::of(0..100u32)
+    ) {
+        let code = match minor {
+            Some(m) => format!("{}.{}", major, m),
+            None => format!("{}", major),
+        };
+        let line = format!("{}{}: exec tools", marker, code);
+        prop_assert!(check_label_prefix(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn clock_time_is_not_a_label_prefix(
+        h in 0..24u32, m in 10..60u32
+    ) {
+        // colon followed by a digit, not whitespace -> a time, not a label
+        let line = format!("{}:{} standup notes", h, m);
+        prop_assert!(check_label_prefix(&line).is_none(), "line: {}", line);
+    }
+
+    // --- Tier 3: warn ---
+
+    #[test]
+    fn bare_dotted_code_in_prose_warns(
+        major in 0..100u32, minor in 0..100u32
+    ) {
+        let line = format!("as decided in {}.{}", major, minor);
+        prop_assert!(check_warn(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn version_with_letter_does_not_warn(
+        major in 0..100u32, minor in 0..100u32
+    ) {
+        let line = format!("bump to v{}.{}", major, minor);
+        prop_assert!(check_warn(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn decimal_quantity_does_not_warn(
+        major in 0..100u32, minor in 0..100u32,
+        unit in "seconds|ms|hours|gb|mb"
+    ) {
+        let line = format!("elapsed {}.{} {}", major, minor, unit);
+        prop_assert!(check_warn(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn filing_noun_with_numeral_warns(
+        noun in "work-item|workitem|wi",
+        major in 0..100u32,
+        minor in proptest::option::of(0..100u32)
+    ) {
+        let code = match minor {
+            Some(m) => format!("{}.{}", major, m),
+            None => format!("{}", major),
+        };
+        let line = format!("implements {} {}", noun, code);
+        prop_assert!(check_warn(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn flag_wins_over_warn_on_the_same_line(
+        term in "phase|stage|step",
+        a in 0..100u32, b in 0..100u32
+    ) {
+        // a flag noun plus a stray dotted code -> classified as a flag
+        let line = format!("{} {} touched the {}.{} surface", term, a, a, b);
+        prop_assert_eq!(classify_line(&line, false).map(|(s, _)| s), Some(Severity::Flag), "line: {}", line);
+    }
+}
+
+// --- Deterministic cases from issue #10 ---
+
+#[test]
+fn issue_10_flag_cases() {
+    // worded noun + decimal, mid-line parenthetical
+    assert!(check_line("entry point (Phase 5.0).").is_some());
+    // leading bare-numeral label prefix
+    assert!(check_label_prefix("5.5: exec/pty tools").is_some());
+    assert!(check_label_prefix("// 5.5: the pty exec tool advertises").is_some());
+    assert!(check_label_prefix("## 5.5: error handling").is_some());
+}
+
+#[test]
+fn issue_10_warn_cases() {
+    for line in [
+        "as decided in 2.1",
+        "exec tools (5.5)",
+        "the peek/poke tools arrive in 5.3",
+        "* mem_ops.h - work-item 5.3",
+    ] {
+        assert_eq!(
+            classify_line(line, false).map(|(s, _)| s),
+            Some(Severity::Warn),
+            "expected warn for: {}",
+            line
+        );
+    }
+}
+
+#[test]
+fn issue_10_clean_cases() {
+    // version strings and quantities must not even warn
+    for line in [
+        "bump to v2.1",
+        "requires Python 3.11",
+        "5.5 seconds elapsed",
+        "increased by 2.1%",
+        "review 3 files",
+    ] {
+        assert_eq!(classify_line(line, false), None, "expected clean for: {}", line);
     }
 }
