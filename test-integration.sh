@@ -110,6 +110,27 @@ else
     bad "--log output labelled with commit sha"
 fi
 
+# --- Symlink handling (--all) ---
+echo ""
+echo "--- Symlink handling (--all) ---"
+walk="$tmpdir/walk-repo"
+mkdir -p "$walk/sub"
+printf '## Stage 2 of rollout\n' > "$walk/sub/notes.md"
+ln -s sub "$walk/link"
+ln -s . "$walk/loop"
+out=$(cd "$walk" && timeout 10 "$BINARY_ABS" --all 2>&1) && status=0 || status=$?
+if [ $status -eq 1 ]; then
+    ok "--all terminates with cyclic symlink"
+else
+    bad "--all terminates with cyclic symlink (exit $status)"
+fi
+count=$(echo "$out" | grep -c 'Stage 2 of rollout' || true)
+if [ "$count" -eq 1 ]; then
+    ok "--all scans symlinked content once"
+else
+    bad "--all scans symlinked content once (got $count)"
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="

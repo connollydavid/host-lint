@@ -116,6 +116,12 @@ fn walkdir_simple(dir: &str) -> Vec<String> {
             Err(_) => continue,
         };
         let path = entry.path();
+        // skip symlinks: following them scans targets twice and loops on cycles
+        match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => continue,
+            Err(_) => continue,
+            _ => {}
+        }
         let path_str = path.to_string_lossy().to_string();
         if path.is_dir() {
             files.extend(walkdir_simple(&path_str));
