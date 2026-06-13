@@ -199,8 +199,10 @@ proptest! {
     fn single_decimal_is_a_numeral_but_version_is_not(
         major in 0..100u32, minor in 0..100u32, patch in 0..100u32
     ) {
-        prop_assert!(is_numeral(&format!("{}.{}", major, minor)));
-        prop_assert!(!is_numeral(&format!("{}.{}.{}", major, minor, patch)));
+        let dec = format!("{}.{}", major, minor);
+        let ver = format!("{}.{}.{}", major, minor, patch);
+        prop_assert!(is_numeral(&dec), "dec: {}", dec);
+        prop_assert!(!is_numeral(&ver), "ver: {}", ver);
     }
 
     // --- Tier 2: leading label prefix (flag) ---
