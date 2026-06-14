@@ -4,9 +4,10 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, scan_text_with_allow, is_ci_file, is_scannable};
+use host_lint::{Match, Severity, scan_text_with_allow, is_ci_file, is_scannable, path_ignored};
 
 const ALLOW_FILE: &str = ".host-lint-allow";
+const IGNORE_FILE: &str = ".host-lintignore";
 
 // The repo root: the parent of GIT_DIR when set (so hooks resolve correctly),
 // else the current directory. Mirrors `run_all_files`.
@@ -97,16 +98,42 @@ fn escape_json(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
 }
 
-fn run_all_files(root: &str, allow: &[String], matches: &mut Vec<Match>) {
+fn run_all_files(root: &str, allow: &[String], ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         return;
     }
 
     for entry in walkdir_simple(root) {
-        if entry.starts_with(".git") || entry.starts_with("node_modules") || entry.starts_with("target") || entry.starts_with("vendor") {
+        // Match the dir skips and the ignore patterns on the repo-relative path.
+        let rel = entry
+            .strip_prefix(root)
+            .unwrap_or(&entry)
+            .trim_start_matches(['/', '\\']);
+        if rel.starts_with(".git") || rel.starts_with("node_modules") || rel.starts_with("target") || rel.starts_with("vendor") {
+            continue;
+        }
+        if path_ignored(rel, ignore) {
             continue;
         }
         scan_file(Path::new(&entry), allow, matches);
+    }
+}
+
+// Repo-relative paths to exclude from `--all` (`.host-lintignore`, gitignore-lite:
+// one pattern per line, `#` comments and blanks ignored). A migration writes this
+// to exclude the append-only record; absent file → no exclusions.
+fn load_ignore(root: &str) -> Vec<String> {
+    if root.is_empty() {
+        return Vec::new();
+    }
+    match fs::read_to_string(Path::new(root).join(IGNORE_FILE)) {
+        Ok(content) => content
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(String::from)
+            .collect(),
+        Err(_) => Vec::new(),
     }
 }
 
@@ -195,7 +222,7 @@ fn main() {
         io::stdin().read_to_string(&mut input).unwrap_or_default();
         scan_text_with_allow(&input, "stdin", &allow, &mut matches);
     } else if all_flag {
-        run_all_files(&root, &allow, &mut matches);
+        run_all_files(&root, &allow, &load_ignore(&root), &mut matches);
     } else if log_flag {
         run_log(&allow, &mut matches);
     } else if files.is_empty() {

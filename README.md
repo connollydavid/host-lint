@@ -108,6 +108,25 @@ Each listed phrase is masked out of every line before detection, case-insensitiv
 
 This is for acknowledging legitimate vocabulary, not for silencing real tells: prefer renaming work after its content (see VOCABULARY.md) and reserve the allow-list for tokens that genuinely are not slop.
 
+### Excluding paths (`.host-lintignore`)
+
+`--all` is a whole-tree audit. To exclude paths from it — an append-only record, a
+vendored tree, generated files — list them in a `.host-lintignore` at the repo root
+(gitignore-lite: one pattern per line, `#` comments and blanks ignored):
+
+```
+# append-only history is acknowledged, not re-audited
+MEMORY.md
+plan/*/README.md
+archive/
+```
+
+A pattern is an exact repo-relative path (`MEMORY.md`), a `*` glob that matches
+within a single path segment (`plan/*/README.md`), or a trailing-slash directory
+prefix (`archive/`) that excludes everything beneath it. Only `--all` honours the
+file; explicit file arguments and `--stdin` are always scanned. This is a path
+filter, not a token exemption — for sanctioned *vocabulary* use `.host-lint-allow`.
+
 ### Pre-commit Hook
 
 ```bash

@@ -326,6 +326,55 @@ pub fn scan_text_with_allow(
     }
 }
 
+/// True if `rel` (a repo-relative, `/`-separated path) matches any ignore
+/// pattern. Patterns are gitignore-lite: an exact path (`MEMORY.md`), a `*`
+/// glob that matches within a single path segment (`plan/*/README.md`), or a
+/// trailing-slash directory prefix (`archive/`) ignoring everything beneath it.
+/// `--all` honours these so a migrated project can exclude its append-only
+/// record from the audit without the engine learning any methodology policy.
+pub fn path_ignored(rel: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| {
+        if let Some(dir) = p.strip_suffix('/') {
+            !dir.is_empty() && (rel == dir || rel.starts_with(&format!("{dir}/")))
+        } else {
+            glob_path(p, rel)
+        }
+    })
+}
+
+fn glob_path(pat: &str, path: &str) -> bool {
+    let pp: Vec<&str> = pat.split('/').collect();
+    let tp: Vec<&str> = path.split('/').collect();
+    pp.len() == tp.len() && pp.iter().zip(&tp).all(|(p, t)| seg_glob(p.as_bytes(), t.as_bytes()))
+}
+
+// Wildcard match within one path segment: `*` matches any run of characters
+// (two-pointer glob with backtracking).
+fn seg_glob(pat: &[u8], s: &[u8]) -> bool {
+    let (mut p, mut t) = (0usize, 0usize);
+    let (mut star, mut mark): (Option<usize>, usize) = (None, 0);
+    while t < s.len() {
+        if p < pat.len() && pat[p] == b'*' {
+            star = Some(p);
+            mark = t;
+            p += 1;
+        } else if p < pat.len() && pat[p] == s[t] {
+            p += 1;
+            t += 1;
+        } else if let Some(sp) = star {
+            p = sp + 1;
+            mark += 1;
+            t = mark;
+        } else {
+            return false;
+        }
+    }
+    while p < pat.len() && pat[p] == b'*' {
+        p += 1;
+    }
+    p == pat.len()
+}
+
 pub fn is_scannable(ext: &str) -> bool {
     matches!(ext, "" | "md" | "txt" | "rst" | "py" | "rs" | "js" | "ts" | "jsx" | "tsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp" | "rb" | "sh" | "yaml" | "yml" | "toml" | "json" | "xml" | "html" | "css" | "sql" | "r" | "lua" | "swift" | "kt" | "scala" | "ex" | "exs" | "clj" | "hs" | "ml" | "vim" | "ps1" | "bat" | "cmake" | "makefile")
 }

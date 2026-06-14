@@ -1,6 +1,6 @@
 use host_lint::{
     check_bare_numeral_header, check_label_prefix, check_line, check_warn, classify_line,
-    is_numeral, scan_text, scan_text_with_allow, Severity,
+    is_numeral, path_ignored, scan_text, scan_text_with_allow, Severity,
 };
 use proptest::prelude::*;
 
@@ -375,6 +375,33 @@ fn empty_allow_list_is_unchanged_behaviour() {
     scan_text("## Phase 2: setup", "PLAN.md", &mut baseline);
     assert_eq!(with_empty.len(), baseline.len());
     assert_eq!(with_empty.len(), 1);
+}
+
+// --- Path ignore (.host-lintignore) ---
+
+#[test]
+fn path_ignore_exact_glob_and_dir() {
+    let pats = vec![
+        "MEMORY.md".to_string(),
+        "plan/*/README.md".to_string(),
+        "archive/".to_string(),
+    ];
+    // exact root-level file
+    assert!(path_ignored("MEMORY.md", &pats));
+    // single-segment glob
+    assert!(path_ignored("plan/0004-command-execution/README.md", &pats));
+    // directory prefix ignores everything beneath
+    assert!(path_ignored("archive/old/notes.md", &pats));
+    assert!(path_ignored("archive", &pats));
+    // not matched: live index, wrong depth, non-root MEMORY
+    assert!(!path_ignored("plan/PLAN.md", &pats));
+    assert!(!path_ignored("plan/0004/extra/README.md", &pats));
+    assert!(!path_ignored("docs/MEMORY.md", &pats));
+}
+
+#[test]
+fn empty_ignore_matches_nothing() {
+    assert!(!path_ignored("MEMORY.md", &[]));
 }
 
 #[test]
