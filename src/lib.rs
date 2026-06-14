@@ -262,10 +262,59 @@ pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
     None
 }
 
+// Blank out every word-boundaried, case-insensitive occurrence of a sanctioned
+// phrase so the classifier never sees it. The boundary requirement (a
+// non-alphanumeric neighbour or a string edge on each side) is what keeps an
+// allow entry specific: `phase 1` masks `phase 1` but NOT the longer tell
+// `phase 12`, so allow-listing one occurrence cannot silently clear another.
+// `allow_lc` entries are pre-lowercased (ASCII) by the caller; ASCII-only
+// folding keeps byte indices aligned between the search copy and the original.
+fn mask_allowed(line: &str, allow_lc: &[String]) -> String {
+    if allow_lc.is_empty() {
+        return line.to_string();
+    }
+    let lower = line.to_ascii_lowercase();
+    let lb = lower.as_bytes();
+    let mut out = line.as_bytes().to_vec();
+    for p in allow_lc {
+        if p.is_empty() {
+            continue;
+        }
+        let mut start = 0;
+        while let Some(rel) = lower[start..].find(p.as_str()) {
+            let at = start + rel;
+            let end = at + p.len();
+            let left_ok = at == 0 || !lb[at - 1].is_ascii_alphanumeric();
+            let right_ok = end == lb.len() || !lb[end].is_ascii_alphanumeric();
+            if left_ok && right_ok {
+                for b in &mut out[at..end] {
+                    *b = b' ';
+                }
+            }
+            start = end;
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| line.to_string())
+}
+
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
+    scan_text_with_allow(input, source, &[], matches);
+}
+
+// As `scan_text`, but a repo's sanctioned phrases (`.host-lint-allow`,
+// ASCII-lowercased by the caller) are masked out of each line before
+// classification. A line still flags on any tell the mask leaves behind, and
+// the reported `text` is the original line so the author sees real context.
+pub fn scan_text_with_allow(
+    input: &str,
+    source: &str,
+    allow_lc: &[String],
+    matches: &mut Vec<Match>,
+) {
     let markdown = source.to_lowercase().ends_with(".md");
     for (i, line) in input.lines().enumerate() {
-        if let Some((severity, term)) = classify_line(line, markdown) {
+        let scanned = mask_allowed(line, allow_lc);
+        if let Some((severity, term)) = classify_line(&scanned, markdown) {
             matches.push(Match {
                 file: source.to_string(),
                 line: i + 1,

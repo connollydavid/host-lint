@@ -1,6 +1,6 @@
 use host_lint::{
     check_bare_numeral_header, check_label_prefix, check_line, check_warn, classify_line,
-    is_numeral, scan_text, Severity,
+    is_numeral, scan_text, scan_text_with_allow, Severity,
 };
 use proptest::prelude::*;
 
@@ -323,6 +323,58 @@ fn issue_10_clean_cases() {
     ] {
         assert_eq!(classify_line(line, false), None, "expected clean for: {}", line);
     }
+}
+
+// --- Sanctioned-token allow-list (.host-lint-allow) ---
+
+// A helper: scan one line under an allow-list, return the matches.
+fn scan_one(line: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match> {
+    let allow_lc: Vec<String> = allow.iter().map(|s| s.to_ascii_lowercase()).collect();
+    let mut m = Vec::new();
+    scan_text_with_allow(line, source, &allow_lc, &mut m);
+    m
+}
+
+#[test]
+fn allowed_phrase_suppresses_its_own_flag() {
+    // "section 1" is a hard flag (section is a flag noun); allow-listing it clears it.
+    assert!(!scan_one("see section 1 of the spec", "doc.md", &[]).is_empty());
+    assert!(scan_one("see section 1 of the spec", "doc.md", &["section 1"]).is_empty());
+}
+
+#[test]
+fn allowed_phrase_suppresses_a_version_warn() {
+    // Version strings ("NT 3.1") trip the advisory warn via the dotted code; allow clears it.
+    assert!(!scan_one("targets NT 3.1 only", "README.md", &[]).is_empty());
+    assert!(scan_one("targets NT 3.1 only", "README.md", &["NT 3.1"]).is_empty());
+}
+
+#[test]
+fn allow_is_case_insensitive() {
+    assert!(scan_one("Built for DOS 6.22 hosts", "doc.md", &["dos 6.22"]).is_empty());
+}
+
+#[test]
+fn allow_does_not_clear_a_different_tell_on_the_same_line() {
+    // Allow-listing "section 1" must not mask the separate "phase 4" tell.
+    let m = scan_one("section 1 covers phase 4 work", "doc.md", &["section 1"]);
+    assert_eq!(m.len(), 1, "phase 4 must still flag");
+    assert_eq!(m[0].term, "phase");
+}
+
+#[test]
+fn allow_respects_word_boundaries() {
+    // "phase 1" allow-listed must NOT clear the longer tell "phase 12".
+    assert!(!scan_one("phase 12 begins", "doc.md", &["phase 1"]).is_empty());
+}
+
+#[test]
+fn empty_allow_list_is_unchanged_behaviour() {
+    let with_empty = scan_one("## Phase 2: setup", "PLAN.md", &[]);
+    let mut baseline = Vec::new();
+    scan_text("## Phase 2: setup", "PLAN.md", &mut baseline);
+    assert_eq!(with_empty.len(), baseline.len());
+    assert_eq!(with_empty.len(), 1);
 }
 
 #[test]

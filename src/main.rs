@@ -4,9 +4,41 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, scan_text, is_ci_file, is_scannable};
+use host_lint::{Match, Severity, scan_text_with_allow, is_ci_file, is_scannable};
 
-fn scan_file(path: &Path, matches: &mut Vec<Match>) {
+const ALLOW_FILE: &str = ".host-lint-allow";
+
+// The repo root: the parent of GIT_DIR when set (so hooks resolve correctly),
+// else the current directory. Mirrors `run_all_files`.
+fn repo_root() -> String {
+    env::var("GIT_DIR")
+        .ok()
+        .and_then(|d| Path::new(&d).parent().and_then(|p| p.to_str()).map(String::from))
+        .or_else(|| env::current_dir().ok().and_then(|p| p.to_str().map(String::from)))
+        .unwrap_or_default()
+}
+
+// Sanctioned phrases the repo declares legitimate vocabulary (`.host-lint-allow`
+// at the repo root): one phrase per line, `#` comments and blank lines ignored.
+// Returned ASCII-lowercased for case-insensitive masking. A missing file yields
+// an empty list (behaviour unchanged), so the feature is opt-in per repo.
+fn load_allow(root: &str) -> Vec<String> {
+    if root.is_empty() {
+        return Vec::new();
+    }
+    let content = match fs::read_to_string(Path::new(root).join(ALLOW_FILE)) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.to_ascii_lowercase())
+        .collect()
+}
+
+fn scan_file(path: &Path, allow: &[String], matches: &mut Vec<Match>) {
     if !path.is_file() {
         return;
     }
@@ -21,7 +53,7 @@ fn scan_file(path: &Path, matches: &mut Vec<Match>) {
         Ok(c) => c,
         Err(_) => return,
     };
-    scan_text(&content, path.to_string_lossy().as_ref(), matches);
+    scan_text_with_allow(&content, path.to_string_lossy().as_ref(), allow, matches);
 }
 
 fn output_text(matches: &[Match]) {
@@ -65,24 +97,20 @@ fn escape_json(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
 }
 
-fn run_all_files(matches: &mut Vec<Match>) {
-    let root = env::var("GIT_DIR").ok().and_then(|d| {
-        Path::new(&d).parent().and_then(|p| p.to_str()).map(String::from)
-    }).unwrap_or_else(|| env::current_dir().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_default());
-
+fn run_all_files(root: &str, allow: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         return;
     }
 
-    for entry in walkdir_simple(&root) {
+    for entry in walkdir_simple(root) {
         if entry.starts_with(".git") || entry.starts_with("node_modules") || entry.starts_with("target") || entry.starts_with("vendor") {
             continue;
         }
-        scan_file(Path::new(&entry), matches);
+        scan_file(Path::new(&entry), allow, matches);
     }
 }
 
-fn run_log(matches: &mut Vec<Match>) {
+fn run_log(allow: &[String], matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
         .output()
@@ -108,7 +136,7 @@ fn run_log(matches: &mut Vec<Match>) {
             None => (record, ""),
         };
         let label = if sha.len() >= 7 { &sha[..7] } else { sha };
-        scan_text(message, label, matches);
+        scan_text_with_allow(message, label, allow, matches);
     }
 }
 
@@ -158,22 +186,24 @@ fn main() {
         }
     }
 
+    let root = repo_root();
+    let allow = load_allow(&root);
     let mut matches = Vec::new();
 
     if stdin_flag {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
-        scan_text(&input, "stdin", &mut matches);
+        scan_text_with_allow(&input, "stdin", &allow, &mut matches);
     } else if all_flag {
-        run_all_files(&mut matches);
+        run_all_files(&root, &allow, &mut matches);
     } else if log_flag {
-        run_log(&mut matches);
+        run_log(&allow, &mut matches);
     } else if files.is_empty() {
         eprintln!("Usage: host-lint [--stdin] [--json] [--all] [--log] [files...]");
         process::exit(2);
     } else {
         for f in &files {
-            scan_file(Path::new(f), &mut matches);
+            scan_file(Path::new(f), &allow, &mut matches);
         }
     }
 
