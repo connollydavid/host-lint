@@ -57,19 +57,9 @@ pub fn is_ci_file(path: &str) -> bool {
     CI_PATTERNS.iter().any(|p| lower.contains(p))
 }
 
-pub fn is_numeral(word: &str) -> bool {
-    if word.is_empty() {
-        return false;
-    }
-    // Arabic integer ("5") or single-decimal numeral ("5.5"); a version-like
-    // form with two or more dots ("1.2.3") is not a numeral.
-    let parts: Vec<&str> = word.split('.').collect();
-    if parts.len() <= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
-        return true;
-    }
-    let upper = word.to_uppercase();
-    upper.len() <= 4 && upper.chars().all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
-}
+/// Re-exported from `host-grammar` so the checker (here) and the generator
+/// (`host-lifecycle`) share one definition of a numeral.
+pub use host_grammar::is_numeral;
 
 // A bare dotted code: exactly one decimal point, digits on both sides ("5.5").
 fn is_dotted_code(word: &str) -> bool {
