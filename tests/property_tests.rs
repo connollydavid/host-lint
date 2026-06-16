@@ -259,6 +259,26 @@ proptest! {
     }
 
     #[test]
+    fn allcaps_designator_before_decimal_does_not_warn(
+        designator in "[A-Z]{2,5}",
+        major in 0..100u32, minor in 0..100u32
+    ) {
+        // "NT 3.1", "SDK 2.1": an all-caps product/version designator, not a code.
+        let line = format!("runs on {} {}.{}", designator, major, minor);
+        prop_assert!(check_warn(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn titlecase_noun_before_decimal_still_warns(
+        noun in "Decision|Milestone|Item|Round",
+        major in 0..100u32, minor in 0..100u32
+    ) {
+        // A Title-case noun is not a designator — the milestone-code register warns.
+        let line = format!("see {} {}.{}", noun, major, minor);
+        prop_assert!(check_warn(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
     fn filing_noun_with_numeral_warns(
         noun in "work-item|workitem|wi",
         major in 0..100u32,
@@ -381,6 +401,26 @@ fn leading_code_label_clean_cases() {
 }
 
 #[test]
+fn allcaps_designator_clean_cases() {
+    // An all-caps product/version designator before a decimal is a version
+    // string, not a milestone code — it must not even warn.
+    for line in [
+        "Make the device load and wire-respond on the Windows NT 3.1 floor",
+        "targets NT 3.1",
+        "ships the SDK 2.1 headers",
+        "DOS 6.2 compatibility",
+    ] {
+        assert_eq!(classify_line(line, false), None, "expected clean for: {}", line);
+    }
+    // …but a Title-case milestone noun before a decimal still warns.
+    assert_eq!(
+        classify_line("see Decision 2.1", false).map(|(s, _)| s),
+        Some(Severity::Warn),
+        "Title-case noun should still warn",
+    );
+}
+
+#[test]
 fn issue_10_clean_cases() {
     // version strings and quantities must not even warn
     for line in [
@@ -412,10 +452,12 @@ fn allowed_phrase_suppresses_its_own_flag() {
 }
 
 #[test]
-fn allowed_phrase_suppresses_a_version_warn() {
-    // Version strings ("NT 3.1") trip the advisory warn via the dotted code; allow clears it.
-    assert!(!scan_one("targets NT 3.1 only", "README.md", &[]).is_empty());
-    assert!(scan_one("targets NT 3.1 only", "README.md", &["NT 3.1"]).is_empty());
+fn allowed_phrase_suppresses_a_dotted_code_warn() {
+    // A milestone-style dotted code ("Decision 2.1") trips the advisory warn; an
+    // allow entry clears it. (An all-caps designator like "NT 3.1" no longer
+    // warns at all — it is recognised as a version string by the engine.)
+    assert!(!scan_one("see Decision 2.1 here", "README.md", &[]).is_empty());
+    assert!(scan_one("see Decision 2.1 here", "README.md", &["Decision 2.1"]).is_empty());
 }
 
 #[test]

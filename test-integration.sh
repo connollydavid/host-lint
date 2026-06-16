@@ -158,7 +158,7 @@ done
 # --- Version / quantity not warned (expect clean, rc=0) ---
 echo ""
 echo "--- Version / quantity stay clean ---"
-for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%' 'COM1 open — DCB seeding' 'the F1 key opens help'; do
+for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%' 'COM1 open — DCB seeding' 'the F1 key opens help' 'wire-respond on Windows NT 3.1' 'ships the SDK 2.1 headers'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 0 ] && ok "clean: $s" || bad "clean: $s (rc=$rc)"
 done
