@@ -1,5 +1,6 @@
 use host_lint::{
-    check_bare_numeral_header, check_label_prefix, check_line, check_warn, classify_line,
+    check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
+    check_warn, classify_line,
     is_numeral, path_ignored, scan_text, scan_text_with_allow, Severity,
 };
 use proptest::prelude::*;
@@ -272,6 +273,37 @@ proptest! {
     }
 
     #[test]
+    fn leading_code_label_warns(
+        bullet in r"|- |\* |// |# |-- ",
+        letter in "[A-Za-z]",
+        digits in 1..1000u32,
+        dash in "—|–|-"
+    ) {
+        // "F1 — …", "- **B2** – …": a one-letter+digits code as a leading label.
+        let line = format!("{}{}{} {} the fix", bullet, letter, digits, dash);
+        prop_assert!(check_code_label_prefix(&line).is_some(), "line: {}", line);
+    }
+
+    #[test]
+    fn multi_letter_device_noun_is_not_a_code_label(
+        digits in 1..1000u32
+    ) {
+        // "COM1 open — …": a three-letter device noun is not a one-letter code,
+        // and is followed by a word, not a delimiter.
+        let line = format!("COM{} open — seed the DCB", digits);
+        prop_assert!(check_code_label_prefix(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
+    fn code_without_a_delimiter_is_not_a_label(
+        letter in "[A-Za-z]", digits in 1..1000u32
+    ) {
+        // "F1 key handler": a code followed by an ordinary word, no label dash.
+        let line = format!("{}{} key handler", letter, digits);
+        prop_assert!(check_code_label_prefix(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
     fn flag_wins_over_warn_on_the_same_line(
         term in "phase|stage|step",
         a in 0..100u32, b in 0..100u32
@@ -306,6 +338,43 @@ fn issue_10_warn_cases() {
             classify_line(line, false).map(|(s, _)| s),
             Some(Severity::Warn),
             "expected warn for: {}",
+            line
+        );
+    }
+}
+
+#[test]
+fn leading_code_label_warn_cases() {
+    // PR #22 structured its fixes as bare "F1 — …" leading labels: the
+    // section-5 code-as-name tell with no preceding review/finding/blocker noun.
+    for line in [
+        "F1 — PE version stamp 3.10",
+        "- **F2** — SetHandleInformation routed through a feat.c probe",
+        "* B3 – lstrcpynA swapped at 50 sites",
+        "F4: the durable name follows the colon",
+    ] {
+        assert_eq!(
+            classify_line(line, false).map(|(s, _)| s),
+            Some(Severity::Warn),
+            "expected warn for: {}",
+            line
+        );
+    }
+}
+
+#[test]
+fn leading_code_label_clean_cases() {
+    // A multi-letter device noun, a code with no label delimiter, and a real
+    // GitHub ref must not be read as a leading code label.
+    for line in [
+        "COM1 open — GetCommState-first DCB seeding",
+        "the F1 key opens help",
+        "fixes #18",
+        "review 3 files",
+    ] {
+        assert!(
+            check_code_label_prefix(line).is_none(),
+            "expected no code-label match for: {}",
             line
         );
     }

@@ -227,6 +227,26 @@ Must not match:
 
 Known gate limits, accepted for parity with the field-tested wrapper rule: version, quarter, and infrastructure tokens (`review v2`, `review q3`, `review s3`) match the letter+digit shape and will flag; the allowlisted `REVIEW` code-tag (section 2) followed by a letter+digit identifier also flags — when those collide, this rule wins.
 
+### Bare leading code label (warn)
+
+The flag above needs a `review`/`finding`/`blocker` noun in front of the code. The same code-as-name tell also appears with **no** noun, as a leading label that structures a write-up — a PR body whose fixes read `F1 — PE version stamp`, `F2 — handle isolation`, `F3 — bounded copy`. The diagnostic is that the label could be dropped and nothing would be lost: the durable name sits right after the dash. Promote the label away (`fix(loader): stamp PE version 3.10`) — the `F1` handle is scoped to one write-up and carries no meaning once it scrolls off.
+
+This is **warned, not flagged**, because the bare one-letter+digits shape collides with legitimate single-letter identifiers — most importantly hardware **reference designators** used exactly this way (`R1 — 10kΩ resistor`, `U2 — microcontroller`, `Q3 — transistor`), which you genuinely cannot drop. The matcher cannot apply the drop-it test, so it asks the author to reconsider rather than blocking.
+
+Match a code of the section-5 shape (one ASCII letter + digits) as the **first non-bullet token** of a line — leading bullets and emphasis (`-`, `*`, `**`, `//`, `#`) are skipped, so a markdown list item reads like a bare line — immediately followed by a label delimiter: an em/en-dash token (`—`/`–`), a spaced hyphen (a standalone `-` token), or a trailing colon on the code itself (`F4:`).
+
+Should match (warn):
+
+- `F1 — PE version stamp 3.10`
+- `- **F2** — the handle-isolation fix` (markdown bullet + emphasis)
+- `B3: the durable name follows the colon`
+
+Must not match:
+
+- `COM1 open — DCB seeding` (multi-letter device noun, not a one-letter code; also followed by a word, not a delimiter)
+- `the F1 key opens help` (code not in leading position, no delimiter)
+- `fixes #18` (a GitHub ref, not a leading letter+digit code)
+
 ## Sources
 
 - Conventional Commits v1.0.0: https://www.conventionalcommits.org/en/v1.0.0/

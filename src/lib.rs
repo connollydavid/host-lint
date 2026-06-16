@@ -211,6 +211,42 @@ pub fn check_warn(line: &str) -> Option<String> {
     None
 }
 
+// Tier 3 (warn): a bare review-code (one letter + digits, e.g. "F1", "B2")
+// used as a leading label — the first non-bullet token of a line, immediately
+// followed by a label delimiter (an em/en-dash token, or a trailing colon on
+// the code itself). This is the section-5 code-as-name tell in its bare leading
+// form, where no review/finding/blocker noun precedes the code (a PR body that
+// structures its fixes as "F1 — …", "F2 — …"). Warned, not flagged: a
+// multi-letter device noun ("COM1") is already excluded by the one-letter code
+// shape, but a single-letter hardware reference designator ("R1 — 10kΩ
+// resistor") fits the same shape, so the call is advisory rather than blocking.
+pub fn check_code_label_prefix(line: &str) -> Option<String> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    // The first token with an alphanumeric core — skips leading bullets and
+    // emphasis markers ("-", "*", "**", "//", "#") so a markdown list item
+    // ("- **F1** — …") is read the same as a bare "F1 — …".
+    let start = tokens
+        .iter()
+        .position(|t| t.chars().any(|c| c.is_alphanumeric()))?;
+    let raw = tokens[start];
+    // "F2:" — the code carries its own label colon, no following dash needed.
+    if let Some(stem) = raw.strip_suffix(':') {
+        let core = stem.trim_matches(|c: char| !c.is_alphanumeric());
+        if is_review_code(core) {
+            return Some(core.to_string());
+        }
+    }
+    let core = raw.trim_matches(|c: char| !c.is_alphanumeric());
+    if !is_review_code(core) {
+        return None;
+    }
+    // "F1 —" — a bare dash delimiter as the next whitespace token.
+    match tokens.get(start + 1).copied() {
+        Some("—") | Some("–") | Some("-") => Some(core.to_string()),
+        _ => None,
+    }
+}
+
 pub fn check_bare_numeral_header(line: &str) -> Option<String> {
     let t = line.trim();
     let hashes = t.chars().take_while(|&c| c == '#').count();
@@ -257,6 +293,9 @@ pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
         }
     }
     if let Some(t) = check_warn(line) {
+        return Some((Severity::Warn, t));
+    }
+    if let Some(t) = check_code_label_prefix(line) {
         return Some((Severity::Warn, t));
     }
     None
