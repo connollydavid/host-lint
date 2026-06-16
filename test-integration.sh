@@ -147,10 +147,18 @@ for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5
     [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
 done
 
+# --- Tier 3: leading code-as-name label (expect warn, rc=3) ---
+echo ""
+echo "--- Leading code label (expect warn) ---"
+for s in 'F1 — PE version stamp 3.10' '- **F2** — handle isolation' 'B3: the durable name follows'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
+done
+
 # --- Version / quantity not warned (expect clean, rc=0) ---
 echo ""
 echo "--- Version / quantity stay clean ---"
-for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%'; do
+for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%' 'COM1 open — DCB seeding' 'the F1 key opens help'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 0 ] && ok "clean: $s" || bad "clean: $s (rc=$rc)"
 done
