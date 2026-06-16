@@ -203,6 +203,16 @@ pub fn check_warn(line: &str) -> Option<String> {
                 if PREV_SKIP.contains(&pc) {
                     continue;
                 }
+                // A version/product designator in all-caps ("NT 3.1", "SDK 2.1",
+                // "DOS 6.2") reads as a version string, not a milestone code.
+                // Title-case nouns ("Decision 2.1") and ordinary lowercase words
+                // ("in 2.1") still warn — only an all-uppercase acronym is skipped.
+                if let Some(prev) = orig.get(i - 1) {
+                    let po = prev.trim_matches(|c: char| !c.is_alphanumeric());
+                    if po.len() >= 2 && po.chars().all(|c| c.is_ascii_uppercase()) {
+                        continue;
+                    }
+                }
             }
             return Some(code.to_string());
         }
