@@ -10,8 +10,3 @@ host-grammar = { git = "https://github.com/connollydavid/host-grammar" }
 
 [dev-dependencies]
 proptest = "1.5"
-
-# Reproducible builds: trim workspace, dependency, and sysroot paths so the release
-# binary does not embed machine-specific absolute paths (environment-independent hash).
-[profile.release]
-trim-paths = "all"
