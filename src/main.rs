@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, scan_text_with_allow, is_ci_file, is_scannable, path_ignored};
+use host_lint::{Match, Severity, scan_text_with_allow, scan_prose_text, is_ci_file, is_scannable, path_ignored};
 
 const ALLOW_FILE: &str = ".host-lint-allow";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -59,9 +59,14 @@ fn scan_file(path: &Path, allow: &[String], matches: &mut Vec<Match>) {
 
 fn output_text(matches: &[Match]) {
     for m in matches {
+        let tag = if m.cite.is_empty() {
+            m.term.clone()
+        } else {
+            format!("{} — {}", m.term, m.cite)
+        };
         match m.severity {
-            Severity::Warn => eprintln!("{}:{}: warning: {} ({})", m.file, m.line, m.text, m.term),
-            Severity::Flag => eprintln!("{}:{}: {} ({})", m.file, m.line, m.text, m.term),
+            Severity::Warn => eprintln!("{}:{}: warning: {} ({})", m.file, m.line, m.text, tag),
+            Severity::Flag => eprintln!("{}:{}: {} ({})", m.file, m.line, m.text, tag),
         }
     }
 }
@@ -84,6 +89,9 @@ fn serde_json_like(matches: &[Match]) -> String {
             Severity::Flag => "flag",
         };
         out.push_str(&format!("\"severity\": \"{}\"", severity));
+        if !m.cite.is_empty() {
+            out.push_str(&format!(", \"cite\": \"{}\"", escape_json(&m.cite)));
+        }
         out.push('}');
         if i < matches.len() - 1 {
             out.push(',');
@@ -201,6 +209,7 @@ fn main() {
     let mut json_flag = false;
     let mut all_flag = false;
     let mut log_flag = false;
+    let mut prose_flag = false;
     let mut files: Vec<String> = Vec::new();
 
     for arg in &args[1..] {
@@ -209,6 +218,7 @@ fn main() {
             "--json" => json_flag = true,
             "--all" => all_flag = true,
             "--log" => log_flag = true,
+            "--prose" => prose_flag = true,
             _ => files.push(arg.clone()),
         }
     }
@@ -220,13 +230,23 @@ fn main() {
     if stdin_flag {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
+        // A title/draft on stdin is prose: run naming tells and prose tells both,
+        // so an agent self-checking a gh title or commit subject sees either.
         scan_text_with_allow(&input, "stdin", &allow, &mut matches);
+        scan_prose_text(&input, "stdin", &mut matches);
+    } else if prose_flag {
+        // Treat each file purely as prose for the agentic-tell engine.
+        for f in &files {
+            if let Ok(content) = fs::read_to_string(f) {
+                scan_prose_text(&content, f, &mut matches);
+            }
+        }
     } else if all_flag {
         run_all_files(&root, &allow, &load_ignore(&root), &mut matches);
     } else if log_flag {
         run_log(&allow, &mut matches);
     } else if files.is_empty() {
-        eprintln!("Usage: host-lint [--stdin] [--json] [--all] [--log] [files...]");
+        eprintln!("Usage: host-lint [--stdin] [--prose] [--json] [--all] [--log] [files...]");
         process::exit(2);
     } else {
         for f in &files {

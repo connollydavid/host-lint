@@ -1,12 +1,12 @@
 [package]
 name = "host-lint"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Detect phase-synonym agentic tells in commits, headers, and comments"
 license = "Unlicense"
 
 [dependencies]
-host-grammar = { git = "https://github.com/connollydavid/host-grammar" }
+host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "1366c8b" }
 
 [dev-dependencies]
 proptest = "1.5"

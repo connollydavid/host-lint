@@ -158,10 +158,22 @@ done
 # --- Version / quantity not warned (expect clean, rc=0) ---
 echo ""
 echo "--- Version / quantity stay clean ---"
-for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%' 'COM1 open — DCB seeding' 'the F1 key opens help' 'wire-respond on Windows NT 3.1' 'ships the SDK 2.1 headers'; do
+for s in 'bump to v2.1' 'requires Python 3.11' '5.5 seconds elapsed' 'increased by 2.1%' 'COM1 open, DCB seeding' 'the F1 key opens help' 'wire-respond on Windows NT 3.1' 'ships the SDK 2.1 headers'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 0 ] && ok "clean: $s" || bad "clean: $s (rc=$rc)"
 done
+
+# --- Prose agentic tells (advisory warn, rc=3) ---
+echo ""
+echo "--- Prose tells warn, never block ---"
+for s in 'a clean title — with an em-dash' 'Let'"'"'s unpack the rollout' 'We delve into the tapestry'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
+done
+# A trope-dense paragraph trips the density summary in --json.
+dense="Let's unpack this. It's not a tweak, it's a revolution. We delve. We leverage. We harness. The result? Pure synergy. Fast, clean, and robust."
+printf '%s' "$dense" | $BINARY --stdin --json 2>/dev/null | grep -q '"term": "tell-density"' \
+    && ok "density summary emitted" || bad "density summary emitted"
 
 # --- Warn output marker and JSON severity ---
 echo ""

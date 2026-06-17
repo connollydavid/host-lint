@@ -247,8 +247,63 @@ Must not match:
 - `the F1 key opens help` (code not in leading position, no delimiter)
 - `fixes #18` (a GitHub ref, not a leading letter+digit code)
 
+## 6. Prose agentic tells (advisory): a token-free trope adaptation
+
+Sections 1–5 catch *naming* tells. A second family is *prose* tells — stylistic
+devices that, piled up, read as machine-generated. This is a token-free English
+adaptation of the trope catalog at tropes.fyi (Ossama): no model, no licensed
+lexicon, just public-domain phrases and explicit equations. It lives in
+`host-grammar`'s `tells` module and host-lint calls it. **Every prose tell is
+warn-tier (exit 3) — advisory, never blocking** — because any one device is
+legitimate rhetoric; the signal is *density*, not any single use. The engine
+runs on titles and drafts (`--stdin`, i.e. commit subjects and gh issue/PR
+titles before filing) and on documents on demand (`--prose`); the staged-file
+pre-commit path does not prose-scan, so ordinary file commits stay quiet.
+
+### Lexical layer (phrase rules)
+
+Word-boundaried, case-folded phrases, each with a low weight (one word is never
+a verdict):
+
+| Tell id | Signals | Cite |
+|---|---|---|
+| `ai-diction` | delve, utilize, leverage, robust, streamline, harness, tapestry, landscape, realm, paradigm, synergy, ecosystem, underscore, showcase, intricate, nuanced, multifaceted | tropes.fyi: AI vocabulary |
+| `magic-adverb` | deeply, fundamentally, remarkably, profoundly, crucially | tropes.fyi: intensifier inflation |
+| `serves-as` | serves as, stands as, represents a, acts as a | tropes.fyi: copula dodge |
+| `filler-transition` | it's worth noting, it bears mentioning, importantly, notably, needless to say | tropes.fyi: empty signpost |
+| `signposted-conclusion` | in conclusion, to sum up, in summary, all in all | tropes.fyi: signposted conclusion |
+| `pedagogical-hook` | let's unpack, let's dive in, let's break this down, here's the kicker, here's the thing, buckle up | tropes.fyi: false suspense |
+| `decoration` | em/en-dash `—` `–`, smart quotes `“ ” ‘ ’`, arrow `→` | tropes.fyi: typographic polish |
+
+### Structural layer (equations)
+
+Each is token-free and windowed over sentences (split with
+`unicode-segmentation`). `s` is a sentence, `W` a token window.
+
+- **negative-parallelism** = `|{(i,j): word_i ∈ NEG, word_j ∈ PIVOT, 0 < j−i ≤ 6}|` — "it's not X, it's Y". (antithesis)
+- **tricolon**: `is_triad(s)` = a short comma triad `A, B, and C` where each span is ≤ 5 words with no internal terminal punctuation. (classical rhetoric)
+- **anaphora** = `Σ_runs max(0, L_r − 2)²` over runs of consecutive sentences sharing an opener (first content word past a leading stopword); superlinear, so a pair is free. (classical rhetoric)
+- **countdown** = `max(0, run_len)` on a run of ≥2 sentence-initial `Not …` closed by `Just/Only …`. (triadic close)
+- **self-answered-question** = count of `?`-terminated sentences immediately followed by a ≤5-word fragment. (hypophora)
+- **listicle** = anaphora over ordinals (first/second/next/finally …). (listicle-in-prose)
+- **ing-tail**: a trailing `, verbing …` participial clause at a sentence end. (participial tail)
+- **false-range** = density of `from X … to Y` (count only; spectrum validity needs semantics). (false range)
+- **punchy-fragments** = `single_sentence_paragraphs / paragraphs` when high. (staccato paragraphs)
+- **bold-first-bullets** = `bullets_opening_** / bullets` when high. (bold-lead bullets)
+
+### Composite density
+
+`tell_score(text)` sums the weights and divides by sentence count; a document is
+**over threshold** only when the weighted mass is high in absolute terms *and*
+dense relative to length (conservative gates, tuned by fixtures). This is the
+"the problem is many together" rule — individual tells stay advisory; the
+density is what escalates. Out of scope (needs semantics, not token-free, and so
+documented but not detected): one-point dilution, content duplication, invented
+concept labels, grandiose stakes, false vulnerability, dead-metaphor repetition.
+
 ## Sources
 
+- tropes.fyi — token-free trope catalog (Ossama, ossama.is); itself AI-assisted, cited as the catalog, not as primary linguistics: https://tropes.fyi/tropes-md
 - Conventional Commits v1.0.0: https://www.conventionalcommits.org/en/v1.0.0/
 - Conventional Comments: https://conventionalcomments.org/
 - PEP 350, Codetags (TODO, FIXME, XXX, HACK): https://peps.python.org/pep-0350/

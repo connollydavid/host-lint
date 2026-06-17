@@ -29,6 +29,8 @@ Warns (advisory, exit 3) on the bare-numeral degenerate form — the noun elided
 
 A warning asks the author (or agent) to reconsider; it does not block a commit hook.
 
+Also warns on **prose agentic tells** — a token-free adaptation of the tropes.fyi catalog (lexical phrases plus structural equations: negative parallelism, tricolon, anaphora, em-dash and other typographic polish, and more), aggregated into a per-document density score. Any one device is legitimate rhetoric, so these are always advisory; the density is what escalates. The engine lives in `host-grammar` and runs on titles/drafts (`--stdin`) and documents (`--prose`). See [VOCABULARY.md](VOCABULARY.md) §6.
+
 Does NOT flag:
 
 - `feat: add parser` — conventional commit, no phase tell
@@ -60,6 +62,9 @@ echo "Phase 1: setup" | ./host-lint --stdin
 
 # Scan every commit message in the repository's history
 ./host-lint --log
+
+# Scan documents as prose for agentic tells (advisory)
+./host-lint --prose PLAN.md README.md
 ```
 
 ### Adopting or upgrading

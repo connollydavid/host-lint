@@ -50,6 +50,9 @@ pub struct Match {
     pub text: String,
     pub term: String,
     pub severity: Severity,
+    /// Citation for a prose tell (the tropes.fyi catalog name + rhetoric term);
+    /// empty for a naming tell, which is self-explanatory.
+    pub cite: String,
 }
 
 pub fn is_ci_file(path: &str) -> bool {
@@ -370,8 +373,54 @@ pub fn scan_text_with_allow(
                 text: line.trim().to_string(),
                 term,
                 severity,
+                cite: String::new(),
             });
         }
+    }
+}
+
+// Best-effort line lookup: the 1-based line of `source` whose text contains the
+// start of `needle`; 1 when not found (titles and synthetic excerpts).
+fn locate_line(input: &str, needle: &str) -> usize {
+    let probe = needle.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+    if probe.is_empty() {
+        return 1;
+    }
+    input
+        .lines()
+        .position(|l| l.contains(&probe))
+        .map(|i| i + 1)
+        .unwrap_or(1)
+}
+
+/// Scan `input` as prose for agentic tells (the host-grammar engine), pushing
+/// each as an advisory `Warn` match, plus one document-level match when the tell
+/// density crosses the threshold. Used for titles, comments, and `--prose` docs;
+/// never blocks (Warn = exit 3), so a flagged draft still lands.
+pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
+    for t in host_grammar::scan_prose(input) {
+        matches.push(Match {
+            file: source.to_string(),
+            line: locate_line(input, &t.excerpt),
+            text: t.excerpt,
+            term: t.id.to_string(),
+            severity: Severity::Warn,
+            cite: t.cite.to_string(),
+        });
+    }
+    let score = host_grammar::tell_score(input);
+    if score.over_threshold {
+        matches.push(Match {
+            file: source.to_string(),
+            line: 1,
+            text: format!(
+                "agentic-tell density {:.2} across {} sentences ({} tells)",
+                score.density, score.sentences, score.tells
+            ),
+            term: "tell-density".to_string(),
+            severity: Severity::Warn,
+            cite: "tropes.fyi: many devices together".to_string(),
+        });
     }
 }
 

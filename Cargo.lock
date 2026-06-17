@@ -123,12 +123,15 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "host-grammar"
-version = "0.1.1"
-source = "git+https://github.com/connollydavid/host-grammar#342f5072d8ae3da8649054c04b345751b56a60e0"
+version = "0.2.0"
+source = "git+https://github.com/connollydavid/host-grammar?rev=1366c8b#1366c8bf5556839872397524314fb97d38277078"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "host-lint"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "host-grammar",
  "proptest",
@@ -429,6 +432,12 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-xid"

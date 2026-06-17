@@ -1,7 +1,7 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, classify_line,
-    is_numeral, path_ignored, scan_text, scan_text_with_allow, Severity,
+    is_numeral, path_ignored, scan_prose_text, scan_text, scan_text_with_allow, Severity,
 };
 use proptest::prelude::*;
 
@@ -527,4 +527,41 @@ fn coauthored_by_trailers_are_exempt() {
         assert_eq!(classify_line(line, false), None, "expected exempt for: {}", line);
         assert_eq!(classify_line(line, true), None, "expected exempt (md) for: {}", line);
     }
+}
+
+#[test]
+fn prose_tells_are_advisory_warns() {
+    // The prose engine emits Warn matches only — never Flag — so a title or
+    // comment with a tell warns (exit 3) but never blocks a commit.
+    let mut m = Vec::new();
+    scan_prose_text("Let's unpack this. We delve into the rich tapestry.", "stdin", &mut m);
+    assert!(!m.is_empty(), "expected prose tells");
+    assert!(m.iter().all(|x| x.severity == Severity::Warn));
+    assert!(m.iter().any(|x| x.term == "pedagogical-hook"));
+    assert!(m.iter().all(|x| !x.cite.is_empty()), "prose tells carry a citation");
+}
+
+#[test]
+fn clean_prose_emits_no_tells() {
+    // Ordinary technical prose stays silent — no Warn, no density gate.
+    let mut m = Vec::new();
+    scan_prose_text(
+        "The parser reads each line and reports the first tell it finds. \
+         A missing allow-list file means no phrases are masked.",
+        "stdin",
+        &mut m,
+    );
+    assert!(m.is_empty(), "clean prose tripped: {:?}", m.iter().map(|x| &x.term).collect::<Vec<_>>());
+}
+
+#[test]
+fn dense_prose_crosses_the_density_gate() {
+    let mut m = Vec::new();
+    scan_prose_text(
+        "Let's unpack this. It's not a tweak, it's a revolution. We delve. \
+         We leverage. We harness. The result? Pure synergy. Fast, clean, and robust.",
+        "stdin",
+        &mut m,
+    );
+    assert!(m.iter().any(|x| x.term == "tell-density"), "expected the density summary");
 }
