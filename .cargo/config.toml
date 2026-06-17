@@ -1,0 +1,5 @@
+# Reproducible builds: drop the linker build-id note (.note.gnu.build-id), which
+# otherwise varies with the build host. With `strip = true` (Cargo.toml) this leaves
+# the release binary free of build-environment metadata.
+[build]
+rustflags = ["-C", "link-arg=-Wl,--build-id=none"]

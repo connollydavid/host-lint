@@ -10,3 +10,9 @@ host-grammar = { git = "https://github.com/connollydavid/host-grammar" }
 
 [dev-dependencies]
 proptest = "1.5"
+
+# Reproducible builds: strip symbols and the .comment section (which embed the build
+# host's toolchain/distro). Combined with --build-id=none (.cargo/config.toml), the
+# release binary carries no build-environment metadata, so it hashes the same anywhere.
+[profile.release]
+strip = true
