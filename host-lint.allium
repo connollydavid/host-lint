@@ -152,3 +152,21 @@ invariant ArabicDigits {
     for numeral in Numeral where numeral.kind = arabic:
         numeral.value contains only ASCII digits
 }
+
+-- === Prose agentic tells ===
+-- The prose-tell equations are specified in host-grammar.allium; the checker
+-- only owns how they map onto severity and exit codes.
+
+rule ScanProse {
+    when: text: String on the --stdin or --prose path
+    let tells = host_grammar.scan_prose(text)
+    let score = host_grammar.tell_score(text)
+    ensures: for each tell, Match.created(term: tell.id, severity: warn)
+    ensures: Match.created(term: "tell-density", severity: warn) when score.over_threshold
+}
+
+invariant ProseTellsAreAdvisory {
+    -- every prose tell is warn-tier, so a flagged title or draft still lands
+    for m in Match where m came from ScanProse:
+        m.severity = warn -- never flag
+}
