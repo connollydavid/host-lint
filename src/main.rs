@@ -230,8 +230,7 @@ fn main() {
     if stdin_flag {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
-        // A title/draft on stdin is prose: run naming tells and prose tells both,
-        // so an agent self-checking a gh title or commit subject sees either.
+        // A stdin title/draft gets both naming and prose tells.
         scan_text_with_allow(&input, "stdin", &allow, &mut matches);
         scan_prose_text(&input, "stdin", &mut matches);
     } else if prose_flag {
