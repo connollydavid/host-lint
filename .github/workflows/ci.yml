@@ -76,6 +76,8 @@ jobs:
         run: allium check host-lint.allium
       - name: allium analyse
         run: allium analyse host-lint.allium
+      - name: allium plan (test obligations)
+        run: allium plan host-lint.allium
 
   test:
     runs-on: ubuntu-latest
