@@ -1,0 +1,56 @@
+# host-lint.obligations — disposition for every `allium plan` obligation.
+# `host-lifecycle obligations host-lint.allium --tests tests` checks this is
+# complete (no obligation undispositioned, no stale entry, every test: name real).
+#   <id> => test:<name> | structural | waived: <reason>
+# structural = the spec's own `allium check`/`analyse` lane discharges it (field
+# presence, enum comparability, surface shape, declared transition graph).
+
+# --- Spec-integrity (covered by the check/analyse lane) ---
+config-default.max_roman_length      => structural
+entity-fields.Invocation             => structural
+entity-fields.Line                   => structural
+entity-fields.Match                  => structural
+entity-fields.Numeral                => structural
+entity-fields.Check                  => structural
+entity-optional.Match.numeral        => structural
+enum-comparable.Severity             => structural
+enum-comparable.NumeralKind          => structural
+surface-actor.LintRun                => structural
+surface-provides.LintRun             => structural
+transition-rejected.Check.status     => structural
+transition-terminal.Check.status     => structural
+invariant.RomanNumeralLength         => structural
+
+# --- Detection rules (behavioural — named property tests) ---
+rule-success.DetectPhaseSynonym               => test:flag_term_followed_by_arabic_numeral_is_detected
+rule-failure.DetectPhaseSynonym.1             => test:flag_term_without_numeral_is_not_detected
+rule-entity-creation.DetectPhaseSynonym.1     => test:flag_term_followed_by_arabic_numeral_is_detected
+rule-success.DetectLeadingCodeLabel           => test:leading_numeral_label_prefix_is_flagged
+rule-failure.DetectLeadingCodeLabel.1         => test:clock_time_is_not_a_label_prefix
+rule-entity-creation.DetectLeadingCodeLabel.1 => test:leading_numeral_label_prefix_is_flagged
+rule-success.DetectBareNumeralHeader          => test:bare_numeral_headers_are_detected
+rule-failure.DetectBareNumeralHeader.1        => test:version_headings_are_not_bare_numeral_headers
+rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_detected
+rule-success.DetectInternalCodeAsName         => test:leading_code_label_warns
+rule-failure.DetectInternalCodeAsName.1       => test:multi_letter_device_noun_is_not_a_code_label
+rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
+rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
+rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn
+rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns
+
+# --- Verdict lifecycle (behavioural — exit-code transitions) ---
+transition-edge.Check.scanning.blocked  => test:flag_wins_over_warn_on_the_same_line
+transition-edge.Check.scanning.advisory => test:bare_dotted_code_in_prose_warns
+transition-edge.Check.scanning.clean    => test:clean_prose_emits_no_tells
+invariant.FlagBeatsWarn                 => test:flag_wins_over_warn_on_the_same_line
+rule-success.VerdictBlocked             => test:flag_wins_over_warn_on_the_same_line
+rule-failure.VerdictBlocked.1           => test:clean_prose_emits_no_tells
+rule-success.VerdictAdvisory            => test:bare_dotted_code_in_prose_warns
+rule-failure.VerdictAdvisory.1          => test:flag_wins_over_warn_on_the_same_line
+rule-success.VerdictClean               => test:clean_prose_emits_no_tells
+rule-failure.VerdictClean.1             => test:bare_dotted_code_in_prose_warns
+rule-success.RecordFlag                 => test:flag_wins_over_warn_on_the_same_line
+rule-failure.RecordFlag.1               => test:flag_wins_over_warn_on_the_same_line
+rule-success.RecordWarn                 => test:bare_dotted_code_in_prose_warns
+rule-failure.RecordWarn.1               => test:flag_wins_over_warn_on_the_same_line
+rule-success.StartScan                  => waived: lifecycle entry — a scan unconditionally enters `scanning`; no observable assertion
