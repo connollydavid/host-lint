@@ -398,7 +398,7 @@ fn locate_line(input: &str, needle: &str) -> usize {
 /// density crosses the threshold. Used for titles, comments, and `--prose` docs;
 /// never blocks (Warn = exit 3), so a flagged draft still lands.
 pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
-    for t in host_grammar::scan_prose(input) {
+    for t in host_grammar::scan_prose_parallel(input) {
         matches.push(Match {
             file: source.to_string(),
             line: locate_line(input, &t.excerpt),

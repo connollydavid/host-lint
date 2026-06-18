@@ -124,7 +124,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "host-grammar"
 version = "0.2.0"
-source = "git+https://github.com/connollydavid/host-grammar?rev=aec090c#aec090cd2d15fa9818f43c9e96c68d23752efecf"
+source = "git+https://github.com/connollydavid/host-grammar?rev=d83b348#d83b34874918fb763b98b42d9dfc6eb0780ec960"
 dependencies = [
  "unicode-segmentation",
 ]
