@@ -175,6 +175,18 @@ dense="Let's unpack this. It's not a tweak, it's a revolution. We delve. We leve
 printf '%s' "$dense" | $BINARY --stdin --json 2>/dev/null | grep -q '"term": "tell-density"' \
     && ok "density summary emitted" || bad "density summary emitted"
 
+# --- Markdown-aware --prose: code blocks and headings are not prose ---
+echo ""
+echo "--- Markdown awareness ---"
+md=$(mktemp --suffix=.md)
+printf 'Intro paragraph here.\n\n```\nIt'"'"'s not a tweak, it'"'"'s a revolution — we delve.\n```\n' > "$md"
+$BINARY --prose "$md" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 0 ] && ok "code block in .md is not prose" || bad "code block in .md (rc=$rc)"
+# the same text as plain stdin (not markdown) DOES warn
+printf 'It'"'"'s not a tweak, it'"'"'s a revolution — we delve.' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 3 ] && ok "same text as plain prose warns" || bad "plain prose warns (rc=$rc)"
+rm -f "$md"
+
 # --- Warn output marker and JSON severity ---
 echo ""
 echo "--- Severity in output ---"

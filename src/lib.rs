@@ -398,7 +398,15 @@ fn locate_line(input: &str, needle: &str) -> usize {
 /// density crosses the threshold. Used for titles, comments, and `--prose` docs;
 /// never blocks (Warn = exit 3), so a flagged draft still lands.
 pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
-    for t in host_grammar::scan_prose_parallel(input) {
+    // A markdown source is scanned structurally (code blocks excluded, headings
+    // not counted as paragraphs); anything else as plain prose.
+    let markdown = source.to_lowercase().ends_with(".md");
+    let tells = if markdown {
+        host_grammar::scan_prose_markdown(input)
+    } else {
+        host_grammar::scan_prose_parallel(input)
+    };
+    for t in tells {
         matches.push(Match {
             file: source.to_string(),
             line: locate_line(input, &t.excerpt),
@@ -408,7 +416,11 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
             cite: t.cite.to_string(),
         });
     }
-    let score = host_grammar::tell_score(input);
+    let score = if markdown {
+        host_grammar::tell_score_markdown(input)
+    } else {
+        host_grammar::tell_score(input)
+    };
     if score.over_threshold {
         matches.push(Match {
             file: source.to_string(),
