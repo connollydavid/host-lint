@@ -1,172 +1,82 @@
--- host-lint.allium
--- Specification for phase-synonym agentic tell detection
-
-entity Line {
-    text: String
-    source: String -- file path or "stdin"
-    line_number: Integer
-}
-
-entity Match {
-    line: Line
-    term: String -- the flag term that matched (e.g. "phase")
-    numeral: String -- the numeral that triggered detection (e.g. "1", "II")
-    severity: flag | warn -- flag blocks (exit 1); warn is advisory (exit 3)
-}
-
-entity FlagTerm {
-    value: String -- one of: phase, stage, step, part, pass, round, iteration,
-                  -- sprint, cycle, increment, wave, batch, section, period,
-                  -- era, epoch, chapter, episode, instalment, leg, lap, level
-}
-
-entity Numeral {
-    value: String -- Arabic digits (e.g. "1", "42"), a single-decimal numeral (e.g. "5.5"), or Roman numerals (e.g. "I", "II", "IV", "X")
-    kind: arabic | decimal | roman
-}
-
-entity Ordinal {
-    value: String -- e.g. "first", "second", "third" -- NOT a numeral
-}
-
-entity AllowlistPrefix {
-    value: String -- conventional commit types, code tags, review shorthand
-    kind: commit_type | code_tag | review_shorthand
-}
+-- allium: 3
+-- host-lint: phase-synonym and bare-numeral naming-tell detection. The prose
+-- equations live in host-grammar.allium; host-lint owns severity and exit codes.
 
 config {
     max_roman_length: Integer = 4
 }
 
+enum Severity {
+    flag
+    warn
+}
+
+enum NumeralKind {
+    arabic
+    decimal
+    roman
+}
+
+entity Line {
+    text: String
+    source: String
+    line_number: Integer
+    is_markdown: Boolean
+    has_phase_synonym_numeral: Boolean
+    has_leading_code_label: Boolean
+    has_bare_numeral_header: Boolean
+    has_internal_code_as_name: Boolean
+    has_bare_numeral_label: Boolean
+}
+
+entity Match {
+    line: Line
+    term: String
+    severity: Severity
+    numeral: Numeral?
+}
+
+entity Numeral {
+    value: String
+    kind: NumeralKind
+}
+
+-- Flag-tier rules block the commit (exit 1); each fires on a structural predicate.
+
 rule DetectPhaseSynonym {
     when: line: Line.created
-    let words = line.text.split_whitespace()
-    let match = first word in words where:
-        word.lowercase.trim_punctuation in FlagTerm.values
-        and (words[next].trim_punctuation is Numeral
-             or words[next+1].trim_punctuation is Numeral)
-    ensures: Match.created(line: line, term: match.term, numeral: match.numeral, severity: flag)
-        when match != null
+    requires: line.has_phase_synonym_numeral
+    ensures: Match.created(line: line, term: "phase-synonym", severity: flag)
 }
 
-rule DetectLabelPrefix {
+rule DetectLeadingCodeLabel {
     when: line: Line.created
-    let s = line.text.trim_start, with leading comment and header markers removed
-        (one of: "///", "//!", "//", "/**", "/*", "--", "*", "#")
-    let code = leading run of digits-and-dots of s
-    ensures: Match.created(line: line, term: code, severity: flag)
-        when code is Numeral
-            and s after code starts with ":" followed by whitespace or end-of-line
-    -- the colon-then-space gate excludes a clock time ("5:30 standup")
+    requires: line.has_leading_code_label
+    ensures: Match.created(line: line, term: "leading-code-label", severity: flag)
 }
 
-rule RejectOrdinals {
-    when: word: String in ["first", "second", "third", "fourth", "fifth",
-                           "sixth", "seventh", "eighth", "ninth", "tenth"]
-    ensures: word is NOT Numeral
-}
-
-Rule CaseInsensitive {
+rule DetectBareNumeralHeader {
     when: line: Line.created
-    ensures: detection operates on line.text.lowercase
-}
-
-Rule NumeralGate {
-    when: term: FlagTerm in line.text
-    ensures: Match.created only when numeral follows term (within 2 words)
-    ensures: no Match when term is followed by non-numeral word
-}
-
-rule BareNumeralHeader {
-    when: line: Line.created
-        and line.source ends_with ".md"
-    let t = line.text.trim
-    let hashes = leading "#" count of t where 1 <= count <= 6
-    let rest = t after hashes, trimmed
-    ensures: Match.created(line: line, term: rest, severity: flag)
-        when rest matches digits optionally followed by "." digits
-    ensures: no Match when rest has more than one "." -- version-like heading (1.2.3)
-    ensures: no Match when line.source does not end_with ".md"
-}
-
-entity FilingNoun {
-    value: String -- one of: work-item, workitem, wi
-}
-
-rule DetectBareNumeralLabel {
-    when: line: Line.created
-        and no flag-severity Match on line -- flag wins over warn
-    let words = line.text.split_whitespace()
-    -- W1: a filing-code noun used with a numbered label
-    let w1 = first word in words where:
-        word.lowercase.trim_punctuation in FilingNoun.values
-        and (words[next] or words[next+1]).trim_punctuation is Numeral
-    -- W2: a bare single-decimal code used as a name, outside version/quantity context
-    let w2 = first word in words where:
-        word has no ASCII letter
-        and word.trim_to_digits_and_dots matches digits "." digits (exactly one dot)
-        and word does not end with "%"
-        and words[next] is not a unit (s, sec, ms, min, h, hr, gb, mb, kb, tb, ...)
-        and words[prev] is not a version/cross-reference word (v, version, python, figure, table, ...)
-    ensures: Match.created(line: line, term: (w1 or w2), severity: warn)
-        when w1 != null or w2 != null
-}
-
-entity ReviewCode {
-    value: String -- "#" + digits (e.g. "#7") or one letter + digits (e.g. "B1", "N2")
-    kind: issue_style | letter_digit
+    requires: line.is_markdown and line.has_bare_numeral_header
+    ensures: Match.created(line: line, term: "bare-numeral-header", severity: flag)
 }
 
 rule DetectInternalCodeAsName {
     when: line: Line.created
-    let words = line.text.split_whitespace()
-    let match = first word in words where:
-        word.lowercase.trim_punctuation in ["review", "finding", "blocker"]
-        and words[next].trim_punctuation_keeping_leading_hash is ReviewCode
-    ensures: Match.created(line: line, term: match.term, numeral: words[next], severity: flag)
-        when match != null
+    requires: line.has_internal_code_as_name
+    ensures: Match.created(line: line, term: "internal-code-as-name", severity: flag)
 }
 
-invariant BareNumeralNotReviewCode {
-    for word in String where word contains only ASCII digits:
-        word is NOT a valid ReviewCode -- "review 3 files" stays clean
-}
+-- Warn-tier (exit 3, advisory). Flag wins: bare-numeral label defers when the
+-- stronger phase-synonym rule already fired on the line.
 
-invariant GithubRefsClean {
-    for verb in ["closes", "fixes"]:
-        verb is NOT in DetectInternalCodeAsName noun set -- "fixes #18" stays clean
-}
-
-invariant OrdinalNotNumeral {
-    for ordinal in ["first", "second", "third", "fourth", "fifth",
-                    "sixth", "seventh", "eighth", "ninth", "tenth"]:
-        ordinal is NOT a valid Numeral
+rule DetectBareNumeralLabel {
+    when: line: Line.created
+    requires: line.has_bare_numeral_label and not line.has_phase_synonym_numeral
+    ensures: Match.created(line: line, term: "bare-numeral-label", severity: warn)
 }
 
 invariant RomanNumeralLength {
-    for numeral in Numeral where numeral.kind = roman:
+    for numeral in Numerals where numeral.kind = roman:
         numeral.value.length <= config.max_roman_length
-}
-
-invariant ArabicDigits {
-    for numeral in Numeral where numeral.kind = arabic:
-        numeral.value contains only ASCII digits
-}
-
--- === Prose agentic tells ===
--- The prose-tell equations are specified in host-grammar.allium; the checker
--- only owns how they map onto severity and exit codes.
-
-rule ScanProse {
-    when: text: String on the --stdin or --prose path
-    let tells = host_grammar.scan_prose(text)
-    let score = host_grammar.tell_score(text)
-    ensures: for each tell, Match.created(term: tell.id, severity: warn)
-    ensures: Match.created(term: "tell-density", severity: warn) when score.over_threshold
-}
-
-invariant ProseTellsAreAdvisory {
-    -- every prose tell is warn-tier, so a flagged title or draft still lands
-    for m in Match where m came from ScanProse:
-        m.severity = warn -- never flag
 }

@@ -66,6 +66,17 @@ jobs:
           chmod +x lint-skill.sh
           ./lint-skill.sh
 
+  allium:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install allium-cli (pinned 3.4.2)
+        run: cargo install allium-cli --version 3.4.2
+      - name: allium check
+        run: allium check host-lint.allium
+      - name: allium analyse
+        run: allium analyse host-lint.allium
+
   test:
     runs-on: ubuntu-latest
     needs: build
