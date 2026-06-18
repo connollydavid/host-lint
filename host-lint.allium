@@ -1,9 +1,21 @@
 -- allium: 3
--- host-lint: phase-synonym and bare-numeral naming-tell detection. The prose
--- equations live in host-grammar.allium; host-lint owns severity and exit codes.
+-- host-lint: phase-synonym and bare-numeral naming-tell detection, and the
+-- flag/warn/clean verdict lifecycle that maps matches onto exit codes. The prose
+-- equations live in host-grammar.allium.
 
 config {
     max_roman_length: Integer = 4
+}
+
+-- One scan run. Starts scanning; settles to exactly one terminal verdict that
+-- maps to an exit code: clean (0), advisory (3, warn-tier), blocked (1, flag-tier).
+given {
+    check: Check
+}
+
+-- The boundary that drives host-lint: one commit-hook or CLI invocation.
+entity Invocation {
+    source: String
 }
 
 enum Severity {
@@ -41,6 +53,25 @@ entity Numeral {
     kind: NumeralKind
 }
 
+entity Check {
+    status: scanning | clean | advisory | blocked
+    saw_flag: Boolean
+    saw_warn: Boolean
+    transitions status {
+        scanning -> blocked
+        scanning -> advisory
+        scanning -> clean
+        terminal: clean, advisory, blocked
+    }
+}
+
+surface LintRun {
+    facing invocation: Invocation
+    provides:
+        ScanStarts(invocation)
+        ScanCompletes(invocation)
+}
+
 -- Flag-tier rules block the commit (exit 1); each fires on a structural predicate.
 
 rule DetectPhaseSynonym {
@@ -76,7 +107,52 @@ rule DetectBareNumeralLabel {
     ensures: Match.created(line: line, term: "bare-numeral-label", severity: warn)
 }
 
+-- === Verdict lifecycle: matches drive the exit-code decision ===
+
+rule StartScan {
+    when: ScanStarts(invocation)
+    ensures: check.status = scanning
+}
+
+rule RecordFlag {
+    when: match: Match.created
+    requires: match.severity = flag
+    ensures: check.saw_flag = true
+}
+
+rule RecordWarn {
+    when: match: Match.created
+    requires: match.severity = warn
+    ensures: check.saw_warn = true
+}
+
+rule VerdictBlocked {
+    when: ScanCompletes(invocation)
+    requires: check.status = scanning and check.saw_flag
+    ensures: check.status = blocked
+}
+
+rule VerdictAdvisory {
+    when: ScanCompletes(invocation)
+    requires: check.status = scanning and not check.saw_flag and check.saw_warn
+    ensures: check.status = advisory
+}
+
+rule VerdictClean {
+    when: ScanCompletes(invocation)
+    requires: check.status = scanning and not check.saw_flag and not check.saw_warn
+    ensures: check.status = clean
+}
+
+-- === Invariants ===
+
 invariant RomanNumeralLength {
     for numeral in Numerals where numeral.kind = roman:
         numeral.value.length <= config.max_roman_length
+}
+
+invariant FlagBeatsWarn {
+    -- a blocked verdict is never downgraded; flag-tier wins regardless of warns
+    for c in Checks where c.saw_flag and c.status != scanning:
+        c.status = blocked
 }
