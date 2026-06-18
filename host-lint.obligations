@@ -37,6 +37,9 @@ rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
 rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
 rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn
 rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns
+rule-success.FlagSubjectDecoration            => test:subject_decoration_escalates_to_flag
+rule-failure.FlagSubjectDecoration.1          => test:body_decoration_stays_advisory
+rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalates_to_flag
 
 # --- Verdict lifecycle (behavioural — exit-code transitions) ---
 transition-edge.Check.scanning.blocked  => test:flag_wins_over_warn_on_the_same_line

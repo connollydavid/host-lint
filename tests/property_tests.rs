@@ -1,7 +1,8 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, classify_line,
-    is_numeral, path_ignored, scan_prose_text, scan_text, scan_text_with_allow, Severity,
+    escalate_subject_decoration, is_numeral, path_ignored, scan_prose_text, scan_text,
+    scan_text_with_allow, Severity,
 };
 use proptest::prelude::*;
 
@@ -539,6 +540,27 @@ fn prose_tells_are_advisory_warns() {
     assert!(m.iter().all(|x| x.severity == Severity::Warn));
     assert!(m.iter().any(|x| x.term == "pedagogical-hook"));
     assert!(m.iter().all(|x| !x.cite.is_empty()), "prose tells carry a citation");
+}
+
+#[test]
+fn subject_decoration_escalates_to_flag() {
+    // A decoration tell on the commit subject (first line) / a gh title blocks.
+    let input = "classify: refuse adoption — print the case";
+    let mut m = Vec::new();
+    scan_prose_text(input, "stdin", &mut m);
+    escalate_subject_decoration(input.lines().next().unwrap(), &mut m);
+    assert!(m.iter().any(|x| x.term == "decoration" && x.severity == Severity::Flag));
+}
+
+#[test]
+fn body_decoration_stays_advisory() {
+    // Decoration confined to the body keeps its Warn — only the subject blocks.
+    let input = "classify: refuse adoption to print the case\n\nIt prints the case — unless the target is software.";
+    let mut m = Vec::new();
+    scan_prose_text(input, "stdin", &mut m);
+    escalate_subject_decoration(input.lines().next().unwrap(), &mut m);
+    assert!(m.iter().any(|x| x.term == "decoration"), "expected a body decoration tell");
+    assert!(m.iter().filter(|x| x.term == "decoration").all(|x| x.severity == Severity::Warn));
 }
 
 #[test]

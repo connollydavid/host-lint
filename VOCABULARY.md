@@ -260,6 +260,14 @@ runs on titles and drafts (`--stdin`, i.e. commit subjects and gh issue/PR
 titles before filing) and on documents on demand (`--prose`); the staged-file
 pre-commit path does not prose-scan, so ordinary file commits stay quiet.
 
+**One exception — the subject line.** On a `--stdin` scan, a `decoration` tell
+(em/en-dash, smart quote, arrow) on the *first line* — the commit subject, or a
+gh title, which becomes the squash-merge subject and front-door text — escalates
+to **flag (exit 1)**, the same no-decoration bar the front-door docs hold. The
+density argument does not apply: a single em-dash in a one-line subject is not
+rhetoric, it is the tell. Body prose and `--prose` documents are unaffected;
+their decoration stays advisory.
+
 ### Lexical layer (phrase rules)
 
 Word-boundaried, case-folded phrases, each with a low weight (one word is never

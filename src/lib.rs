@@ -436,6 +436,20 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     }
 }
 
+/// Escalate decoration tells on the commit subject to blocking `Flag`. The first
+/// line of a commit message — or a gh issue/PR title piped on stdin — becomes the
+/// squash-merge subject / front-door text, so it is held to the same no-decoration
+/// bar as the front-door docs: an em-dash, arrow, or smart quote there blocks
+/// rather than warns. Body prose and other tells keep their advisory `Warn`. A
+/// `decoration` match whose excerpt occurs in `subject` is the subject's.
+pub fn escalate_subject_decoration(subject: &str, matches: &mut [Match]) {
+    for m in matches.iter_mut() {
+        if m.term == "decoration" && subject.contains(&m.text) {
+            m.severity = Severity::Flag;
+        }
+    }
+}
+
 /// True if `rel` (a repo-relative, `/`-separated path) matches any ignore
 /// pattern. Patterns are gitignore-lite: an exact path (`MEMORY.md`), a `*`
 /// glob that matches within a single path segment (`plan/*/README.md`), or a

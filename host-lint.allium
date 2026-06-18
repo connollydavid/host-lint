@@ -34,11 +34,13 @@ entity Line {
     source: String
     line_number: Integer
     is_markdown: Boolean
+    is_subject: Boolean
     has_phase_synonym_numeral: Boolean
     has_leading_code_label: Boolean
     has_bare_numeral_header: Boolean
     has_internal_code_as_name: Boolean
     has_bare_numeral_label: Boolean
+    has_decoration: Boolean
 }
 
 entity Match {
@@ -108,6 +110,16 @@ rule DetectBareNumeralLabel {
     when: line: Line.created
     requires: line.has_bare_numeral_label and not line.has_phase_synonym_numeral
     ensures: Match.created(line: line, term: "bare-numeral-label", severity: warn)
+}
+
+-- The commit subject (first line of a message) and a gh title are held to the
+-- front-door no-decoration bar: a decoration tell (em-dash, arrow, smart quote)
+-- there blocks. Off-subject decoration stays the advisory prose warn modelled in
+-- host-grammar.allium, so only the subject escalates.
+rule FlagSubjectDecoration {
+    when: line: Line.created
+    requires: line.is_subject and line.has_decoration
+    ensures: Match.created(line: line, term: "decoration", severity: flag)
 }
 
 -- === Verdict lifecycle: matches drive the exit-code decision ===

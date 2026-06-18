@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, scan_text_with_allow, scan_prose_text, is_ci_file, is_scannable, path_ignored};
+use host_lint::{Match, Severity, scan_text_with_allow, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored};
 
 const ALLOW_FILE: &str = ".host-lint-allow";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -233,6 +233,9 @@ fn main() {
         // A stdin title/draft gets both naming and prose tells.
         scan_text_with_allow(&input, "stdin", &allow, &mut matches);
         scan_prose_text(&input, "stdin", &mut matches);
+        // The subject (first line) becomes a squash-merge subject / gh title; a
+        // decoration tell there blocks rather than warns. The body stays advisory.
+        escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
     } else if prose_flag {
         // Treat each file purely as prose for the agentic-tell engine.
         for f in &files {
