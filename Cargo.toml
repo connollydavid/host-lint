@@ -6,7 +6,7 @@ description = "Detect phase-synonym agentic tells in commits, headers, and comme
 license = "Unlicense"
 
 [dependencies]
-host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "bba4895" }
+host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "8091261" }
 
 [dev-dependencies]
 proptest = "1.5"
