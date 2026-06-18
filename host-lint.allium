@@ -92,14 +92,17 @@ rule DetectBareNumeralHeader {
     ensures: Match.created(line: line, term: "bare-numeral-header", severity: flag)
 }
 
+-- Warn-tier (exit 3, advisory). Flag wins: a warn-tier match defers when a
+-- stronger flag-tier rule already fired on the line.
+
+-- A bare review/finding code used as a name (e.g. a leading "F1 — …") is warned,
+-- not flagged: a single-letter hardware reference designator ("R1 — 10kΩ") fits
+-- the same shape, so the call is advisory rather than blocking.
 rule DetectInternalCodeAsName {
     when: line: Line.created
     requires: line.has_internal_code_as_name
-    ensures: Match.created(line: line, term: "internal-code-as-name", severity: flag)
+    ensures: Match.created(line: line, term: "internal-code-as-name", severity: warn)
 }
-
--- Warn-tier (exit 3, advisory). Flag wins: bare-numeral label defers when the
--- stronger phase-synonym rule already fired on the line.
 
 rule DetectBareNumeralLabel {
     when: line: Line.created
