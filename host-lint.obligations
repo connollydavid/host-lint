@@ -35,8 +35,8 @@ rule-entity-creation.DetectLeadingCodeLabel.1 => test:leading_numeral_label_pref
 rule-success.DetectBareNumeralHeader          => test:bare_numeral_headers_are_detected
 rule-failure.DetectBareNumeralHeader.1        => test:version_headings_are_not_bare_numeral_headers
 rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_detected
-rule-success.DetectInternalCodeAsName         => kani:verify_review_code_accepts_hash_digit
-rule-failure.DetectInternalCodeAsName.1       => kani:verify_review_code_rejects_two_letters
+rule-success.DetectInternalCodeAsName         => kani:verify_review_code_accepts_hash_digit inputs=src/lib.rs
+rule-failure.DetectInternalCodeAsName.1       => kani:verify_review_code_rejects_two_letters inputs=src/lib.rs
 rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
 rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
 rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn

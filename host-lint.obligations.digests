@@ -1,0 +1,4 @@
+# host-lifecycle obligations digest ledger (--record-digests).
+# <obligation-id>\t<git hash-object of declared inputs at re-derivation>
+rule-success.DetectInternalCodeAsName	9a6093db6437d922d81c8f86afe679bbe7b051ff
+rule-failure.DetectInternalCodeAsName.1	9a6093db6437d922d81c8f86afe679bbe7b051ff

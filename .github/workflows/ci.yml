@@ -78,9 +78,13 @@ jobs:
         run: allium analyse host-lint.allium
       - name: allium plan (test obligations)
         run: allium plan host-lint.allium
-      - name: Install host-lifecycle (pinned)
-        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev 28504bb
-      - name: Discharge obligations (every obligation dispositioned, test + kani refs exist)
+      - name: Install host-lifecycle (pinned v0.18.1)
+        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev ca0dfe28cb99c20afe0420bf2f7cb3263550e019
+      - name: Lint obligations (dispositioned, names present, inputs not stale)
+        # Offline gate: every obligation dispositioned + test/proof names present, plus
+        # input-digest staleness (the rungs declare `inputs=src/lib.rs`; the committed
+        # host-lint.obligations.digests ledger must still match). The real proof re-run
+        # is the `kani` job's `--rederive` below (call/0018, #8).
         run: host-lifecycle obligations host-lint.allium --tests tests --prove src
 
   kani:
@@ -93,6 +97,14 @@ jobs:
           cargo kani setup
       - name: Verify proof harnesses (code-conformance tier)
         run: cargo kani --output-format terse
+      - name: Install host-prove + host-lifecycle (pinned)
+        run: |
+          cargo install --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
+          cargo install --git https://github.com/connollydavid/host-lifecycle --rev ca0dfe28cb99c20afe0420bf2f7cb3263550e019
+      - name: Discharge kani rungs by re-derivation (call/0018, #8)
+        # The real discharge: re-run each kani: rung via host-prove and gate on PASS,
+        # not name-presence. host-prove (on PATH) drives `cargo kani` per harness.
+        run: host-lifecycle obligations host-lint.allium --tests tests --rederive .
 
   test:
     runs-on: ubuntu-latest
