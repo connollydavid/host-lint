@@ -97,8 +97,11 @@ jobs:
           cargo kani setup
       - name: Verify proof harnesses (code-conformance tier)
         run: cargo kani --output-format terse
-      - name: Install host-prove + host-lifecycle (pinned)
+      - name: Install allium-cli + host-prove + host-lifecycle (pinned)
+        # `obligations` derives the obligations via `allium plan`, so allium-cli is
+        # needed here too (not only in the allium job).
         run: |
+          cargo install allium-cli --version 3.4.2
           cargo install --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
           cargo install --git https://github.com/connollydavid/host-lifecycle --rev ca0dfe28cb99c20afe0420bf2f7cb3263550e019
       - name: Discharge kani rungs by re-derivation (call/0018, #8)
