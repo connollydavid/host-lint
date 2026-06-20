@@ -4,9 +4,9 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, scan_text_with_allow, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored};
+use host_lint::{Match, Severity, LexiconEntry, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, validate_lexicon_entry};
 
-const ALLOW_FILE: &str = ".host-lint-allow";
+const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
 
 // The repo root: the parent of GIT_DIR when set (so hooks resolve correctly),
@@ -19,27 +19,220 @@ fn repo_root() -> String {
         .unwrap_or_default()
 }
 
-// Sanctioned phrases the repo declares legitimate vocabulary (`.host-lint-allow`
-// at the repo root): one phrase per line, `#` comments and blank lines ignored.
-// Returned ASCII-lowercased for case-insensitive masking. A missing file yields
-// an empty list (behaviour unchanged), so the feature is opt-in per repo.
-fn load_allow(root: &str) -> Vec<String> {
-    if root.is_empty() {
-        return Vec::new();
-    }
-    let content = match fs::read_to_string(Path::new(root).join(ALLOW_FILE)) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    content
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| l.to_ascii_lowercase())
-        .collect()
+// The repo's LEXICON (issue #13): the validated allowlist phrases (lowercased for
+// case-insensitive masking), the committed `strict` flag, and the parsed entries
+// (for the `lexicon` subcommand). An invalid entry — a master key, a tracker ref
+// with no URL, a laundered tell — is reported to stderr and then dropped: it never
+// masks, so soundness does not depend on the file being hand-edited correctly.
+// A missing file yields an empty lexicon (the feature is opt-in per repo).
+struct Lexicon {
+    phrases_lc: Vec<String>,
+    strict: bool,
+    entries: Vec<LexiconEntry>,
 }
 
-fn scan_file(path: &Path, allow: &[String], matches: &mut Vec<Match>) {
+fn load_lexicon(root: &str) -> Lexicon {
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, entries: Vec::new() };
+    if root.is_empty() {
+        return lex;
+    }
+    let content = match fs::read_to_string(Path::new(root).join(LEXICON_FILE)) {
+        Ok(c) => c,
+        Err(_) => return lex,
+    };
+    for line in content.lines() {
+        if is_strict_directive(line) {
+            lex.strict = true;
+            continue;
+        }
+        let Some(entry) = parse_lexicon_line(line) else { continue };
+        if let Err(reason) = validate_lexicon_entry(&entry) {
+            eprintln!("host-lint: LEXICON entry ignored ({reason})");
+            continue;
+        }
+        lex.phrases_lc.push(entry.phrase.to_ascii_lowercase());
+        lex.entries.push(entry);
+    }
+    lex
+}
+
+// `host-lint lexicon <list|add|rm|--check>`: the CRUD that owns every LEXICON
+// decision so a weak agent never hand-authors the file (issue #13). `add` runs the
+// three guards and refuses a master key, a laundered tell, or an un-cited tracker
+// ref — the tool, not the prompt, is the gate. Always exits.
+fn run_lexicon(root: &str, args: &[String]) -> ! {
+    let path = Path::new(root).join(LEXICON_FILE);
+    match args.first().map(String::as_str) {
+        Some("list") => {
+            let lex = load_lexicon(root);
+            println!("strict: {}", if lex.strict { "on" } else { "off" });
+            for e in &lex.entries {
+                match &e.url {
+                    Some(u) => println!("{}  ({})", e.phrase, u),
+                    None => println!("{}", e.phrase),
+                }
+            }
+            process::exit(0);
+        }
+        Some("add") => {
+            let Some(phrase) = args.get(1).filter(|p| !p.is_empty()) else {
+                eprintln!("usage: host-lint lexicon add \"<phrase>\" [--url <url>]");
+                process::exit(2);
+            };
+            let url = parse_url_flag(&args[2..]);
+            let entry = LexiconEntry { phrase: phrase.clone(), url };
+            if let Err(reason) = validate_lexicon_entry(&entry) {
+                eprintln!("host-lint: refused ({reason})");
+                process::exit(1);
+            }
+            // Idempotent: a phrase already present is a no-op, not an error.
+            if load_lexicon(root).entries.iter().any(|e| e.phrase.eq_ignore_ascii_case(&entry.phrase)) {
+                println!("already present: {}", entry.phrase);
+                process::exit(0);
+            }
+            let line = match &entry.url {
+                Some(u) => format!("{} {}\n", entry.phrase, u),
+                None => format!("{}\n", entry.phrase),
+            };
+            let mut content = fs::read_to_string(&path).unwrap_or_default();
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(&line);
+            if let Err(e) = fs::write(&path, content) {
+                eprintln!("host-lint: cannot write {}: {e}", path.display());
+                process::exit(2);
+            }
+            println!("added: {}", entry.phrase);
+            process::exit(0);
+        }
+        Some("rm") => {
+            let Some(phrase) = args.get(1) else {
+                eprintln!("usage: host-lint lexicon rm \"<phrase>\"");
+                process::exit(2);
+            };
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => {
+                    eprintln!("host-lint: no LEXICON at {}", path.display());
+                    process::exit(1);
+                }
+            };
+            let mut removed = 0;
+            let kept: Vec<&str> = content
+                .lines()
+                .filter(|line| {
+                    let drop = parse_lexicon_line(line)
+                        .is_some_and(|e| e.phrase.eq_ignore_ascii_case(phrase));
+                    if drop {
+                        removed += 1;
+                    }
+                    !drop
+                })
+                .collect();
+            if removed == 0 {
+                eprintln!("host-lint: not in LEXICON: {phrase}");
+                process::exit(1);
+            }
+            let mut out = kept.join("\n");
+            out.push('\n');
+            if let Err(e) = fs::write(&path, out) {
+                eprintln!("host-lint: cannot write {}: {e}", path.display());
+                process::exit(2);
+            }
+            println!("removed: {phrase}");
+            process::exit(0);
+        }
+        Some("--check") => {
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            let (mut total, mut errs) = (0, 0);
+            for (i, line) in content.lines().enumerate() {
+                if is_strict_directive(line) {
+                    continue;
+                }
+                let Some(e) = parse_lexicon_line(line) else { continue };
+                total += 1;
+                if let Err(reason) = validate_lexicon_entry(&e) {
+                    eprintln!("{}:{}: invalid entry ({reason})", LEXICON_FILE, i + 1);
+                    errs += 1;
+                }
+            }
+            if errs > 0 {
+                eprintln!("host-lint: {errs} invalid of {total} LEXICON entries");
+                process::exit(1);
+            }
+            println!("LEXICON OK ({total} entries)");
+            process::exit(0);
+        }
+        // The network lane (issue #13 guard 3): the offline format-check cannot
+        // tell a real `#7` from a phantom `#999`, and a weak agent fabricates URLs,
+        // so a network-having lane (CI / opt-in) re-derives liveness. Off the commit
+        // hook by design — it needs the network the hook must not.
+        Some("--check-urls") => {
+            let cited: Vec<LexiconEntry> = load_lexicon(root)
+                .entries
+                .into_iter()
+                .filter(|e| e.url.is_some())
+                .collect();
+            if cited.is_empty() {
+                println!("LEXICON: no cited references to check");
+                process::exit(0);
+            }
+            let mut dead = 0;
+            for e in &cited {
+                let url = e.url.as_deref().unwrap_or_default();
+                match url_status(url) {
+                    Ok(code) if (200..400).contains(&code) => {
+                        println!("ok   {code}  {}  ({url})", e.phrase)
+                    }
+                    Ok(code) => {
+                        eprintln!("DEAD {code}  {}  ({url})", e.phrase);
+                        dead += 1;
+                    }
+                    Err(msg) => {
+                        eprintln!("ERR  {}  ({url}): {msg}", e.phrase);
+                        dead += 1;
+                    }
+                }
+            }
+            if dead > 0 {
+                eprintln!("host-lint: {dead} dead/unreachable LEXICON reference(s)");
+                process::exit(1);
+            }
+            println!("LEXICON URLs OK ({} checked)", cited.len());
+            process::exit(0);
+        }
+        _ => {
+            eprintln!("usage: host-lint lexicon <list | add \"<phrase>\" [--url <url>] | rm \"<phrase>\" | --check | --check-urls>");
+            process::exit(2);
+        }
+    }
+}
+
+// Pull the value of a `--url <value>` flag from a lexicon-subcommand argument tail.
+fn parse_url_flag(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|a| a == "--url")
+        .and_then(|i| args.get(i + 1))
+        .cloned()
+}
+
+// Resolve a URL to its final HTTP status by shelling `curl` (following redirects,
+// body discarded, 10s cap) and parsing the code in-process — one tool, one parse,
+// per the weak-agent thesis. A transport failure (DNS, timeout, no curl) is `Err`.
+fn url_status(url: &str) -> Result<u32, String> {
+    let out = process::Command::new("curl")
+        .args(["-sSL", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "10", url])
+        .output()
+        .map_err(|e| format!("curl unavailable: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("unreachable ({})", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    let code = String::from_utf8_lossy(&out.stdout);
+    code.trim().parse::<u32>().map_err(|_| format!("bad status '{}'", code.trim()))
+}
+
+fn scan_file(path: &Path, allow: &[String], strict: bool, matches: &mut Vec<Match>) {
     if !path.is_file() {
         return;
     }
@@ -54,7 +247,7 @@ fn scan_file(path: &Path, allow: &[String], matches: &mut Vec<Match>) {
         Ok(c) => c,
         Err(_) => return,
     };
-    scan_text_with_allow(&content, path.to_string_lossy().as_ref(), allow, matches);
+    scan_text_with_allow_strict(&content, path.to_string_lossy().as_ref(), allow, strict, matches);
 }
 
 fn output_text(matches: &[Match]) {
@@ -106,7 +299,7 @@ fn escape_json(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
 }
 
-fn run_all_files(root: &str, allow: &[String], ignore: &[String], matches: &mut Vec<Match>) {
+fn run_all_files(root: &str, allow: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         return;
     }
@@ -147,7 +340,7 @@ fn run_all_files(root: &str, allow: &[String], ignore: &[String], matches: &mut 
         }
         // scan_file additionally skips non-files (tracked-but-deleted), CI files,
         // and unscannable extensions.
-        scan_file(&path, allow, matches);
+        scan_file(&path, allow, strict, matches);
     }
 }
 
@@ -169,7 +362,7 @@ fn load_ignore(root: &str) -> Vec<String> {
     }
 }
 
-fn run_log(allow: &[String], matches: &mut Vec<Match>) {
+fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
         .output()
@@ -195,12 +388,18 @@ fn run_log(allow: &[String], matches: &mut Vec<Match>) {
             None => (record, ""),
         };
         let label = if sha.len() >= 7 { &sha[..7] } else { sha };
-        scan_text_with_allow(message, label, allow, matches);
+        scan_text_with_allow_strict(message, label, allow, strict, matches);
     }
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    // `lexicon` is a subcommand (CRUD over the allowlist), not a scan flag.
+    if args.get(1).map(String::as_str) == Some("lexicon") {
+        run_lexicon(&repo_root(), &args[2..]);
+    }
+
     let mut stdin_flag = false;
     let mut json_flag = false;
     let mut all_flag = false;
@@ -220,14 +419,16 @@ fn main() {
     }
 
     let root = repo_root();
-    let allow = load_allow(&root);
+    let lex = load_lexicon(&root);
+    let allow = lex.phrases_lc.as_slice();
+    let strict = lex.strict;
     let mut matches = Vec::new();
 
     if stdin_flag {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
         // A stdin title/draft gets both naming and prose tells.
-        scan_text_with_allow(&input, "stdin", &allow, &mut matches);
+        scan_text_with_allow_strict(&input, "stdin", allow, strict, &mut matches);
         scan_prose_text(&input, "stdin", &mut matches);
         // The subject (first line) becomes a squash-merge subject / gh title; a
         // decoration tell there blocks rather than warns. The body stays advisory.
@@ -240,9 +441,9 @@ fn main() {
             }
         }
     } else if all_flag {
-        run_all_files(&root, &allow, &load_ignore(&root), &mut matches);
+        run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
     } else if log_flag {
-        run_log(&allow, &mut matches);
+        run_log(allow, strict, &mut matches);
     } else if files.is_empty() {
         eprintln!("Usage: host-lint [--stdin] [--prose] [--json] [--all] [--log] [files...]");
         process::exit(2);
@@ -264,7 +465,7 @@ fn main() {
             if path_ignored(&rel, &ignore) {
                 continue;
             }
-            scan_file(Path::new(f), &allow, &mut matches);
+            scan_file(Path::new(f), allow, strict, &mut matches);
         }
     }
 

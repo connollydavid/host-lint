@@ -5,6 +5,10 @@
 
 config {
     max_roman_length: Integer = 4
+    -- The committed LEXICON `strict` directive. When set, the naming-warn tier
+    -- escalates to a block (a declarable lexicon makes an undeclared tell a hard
+    -- signal). Default off, so a project without a lexicon is unaffected.
+    strict: Boolean = false
 }
 
 -- One scan run. Starts scanning; settles to exactly one terminal verdict that
@@ -110,6 +114,16 @@ rule DetectBareNumeralLabel {
     when: line: Line.created
     requires: line.has_bare_numeral_label and not line.has_phase_synonym_numeral
     ensures: Match.created(line: line, term: "bare-numeral-label", severity: warn)
+}
+
+-- Under the committed LEXICON `strict` directive, a naming-warn Match that the
+-- lexicon did not mask is raised to a blocking flag: once a project can *declare*
+-- its legitimate tell-shaped tokens, an *un*declared one is a hard signal, not
+-- merely advisory. The prose-warn tier (host-grammar.allium) is unaffected.
+rule EscalateUnderStrict {
+    when: match: Match.created
+    requires: config.strict and match.severity = warn
+    ensures: match.severity = flag
 }
 
 -- The commit subject (first line of a message) and a gh title are held to the

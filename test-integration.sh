@@ -217,6 +217,33 @@ for s in 'Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>' 'co-authored-
     [ "$rc" -eq 0 ] && ok "exempt: $s" || bad "exempt: $s (rc=$rc)"
 done
 
+# --- LEXICON: CRUD guards + strict escalation (issue #13) ---
+echo ""
+echo "--- LEXICON ---"
+LEX=$(mktemp -d)
+export GIT_DIR="$LEX/.git"   # redirect repo_root to the temp dir (no .git needed)
+$BINARY lexicon add "Windows 3.1" >/dev/null 2>&1 && ok "add vocab" || bad "add vocab"
+$BINARY lexicon add "#7" --url https://github.com/connollydavid/host/issues/7 >/dev/null 2>&1 && ok "add cited ref" || bad "add cited ref"
+# Each guard refuses with exit 1 (the tool, not the prompt, owns the decision).
+$BINARY lexicon add "5.5" >/dev/null 2>&1 && bad "G1 master key rejected" || ok "G1 master key rejected"
+$BINARY lexicon add "Phase 5.5" >/dev/null 2>&1 && bad "G2 laundering rejected" || ok "G2 laundering rejected"
+$BINARY lexicon add "#999" >/dev/null 2>&1 && bad "citation gate rejected" || ok "citation gate rejected"
+$BINARY lexicon list 2>/dev/null | grep -q "Windows 3.1" && ok "list shows vocab" || bad "list shows vocab"
+$BINARY lexicon --check >/dev/null 2>&1 && ok "--check clean" || bad "--check clean"
+$BINARY lexicon rm "Windows 3.1" >/dev/null 2>&1 && ok "rm entry" || bad "rm entry"
+$BINARY lexicon list 2>/dev/null | grep -q "Windows 3.1" && bad "rm removed it" || ok "rm removed it"
+# Strict escalation: the directive turns an undeclared warn-tier code into a block.
+printf '# host-lint: strict\nDecision 2.1\n' > "$LEX/LEXICON"
+printf 'see Decision 2.1 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 0 ] && ok "strict: declared phrase clears" || bad "strict: declared phrase clears (rc=$rc)"
+printf 'see Decision 2.4 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 1 ] && ok "strict: undeclared code escalates to flag" || bad "strict: escalation (rc=$rc)"
+printf 'Decision 2.1\n' > "$LEX/LEXICON"   # same vocab, no strict directive
+printf 'see Decision 2.4 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 3 ] && ok "non-strict: undeclared code only warns" || bad "non-strict warn (rc=$rc)"
+unset GIT_DIR
+rm -rf "$LEX"
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="

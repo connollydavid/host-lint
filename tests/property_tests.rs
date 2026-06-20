@@ -1,8 +1,9 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, classify_line,
-    escalate_subject_decoration, is_numeral, path_ignored, scan_prose_text, scan_text,
-    scan_text_with_allow, Severity, WARN_NOUNS,
+    escalate_subject_decoration, is_numeral, is_strict_directive, parse_lexicon_line, path_ignored,
+    scan_prose_text, scan_text, scan_text_with_allow, scan_text_with_allow_strict,
+    validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
 
@@ -438,7 +439,7 @@ fn issue_10_clean_cases() {
     }
 }
 
-// --- Sanctioned-token allow-list (.host-lint-allow) ---
+// --- Sanctioned-token allowlist (the LEXICON, masked before detection) ---
 
 // A helper: scan one line under an allow-list, return the matches.
 fn scan_one(line: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match> {
@@ -589,4 +590,111 @@ fn dense_prose_crosses_the_density_gate() {
         &mut m,
     );
     assert!(m.iter().any(|x| x.term == "tell-density"), "expected the density summary");
+}
+
+// --- LEXICON: parsing, the strict directive, and the three guards (issue #13) ---
+
+fn entry(phrase: &str, url: Option<&str>) -> LexiconEntry {
+    LexiconEntry { phrase: phrase.to_string(), url: url.map(String::from) }
+}
+
+#[test]
+fn lexicon_parse_skips_blanks_and_comments() {
+    assert_eq!(parse_lexicon_line(""), None);
+    assert_eq!(parse_lexicon_line("   "), None);
+    assert_eq!(parse_lexicon_line("# a note"), None);
+    // A markdown-style "## heading" is a comment (hash + non-digit), not an entry.
+    assert_eq!(parse_lexicon_line("## heading"), None);
+    // The strict directive is comment-shaped, so the phrase parser ignores it.
+    assert_eq!(parse_lexicon_line("# host-lint: strict"), None);
+}
+
+#[test]
+fn lexicon_parse_keeps_hash_number_entries() {
+    // "#7" is an entry (hash + digit), NOT a comment — this is the carve-out that
+    // stops the comment marker colliding with the hash-number reference shape.
+    assert_eq!(parse_lexicon_line("#7"), Some(entry("#7", None)));
+}
+
+#[test]
+fn lexicon_parse_splits_a_trailing_url() {
+    let e = parse_lexicon_line("#7 https://github.com/o/r/issues/7").unwrap();
+    assert_eq!(e.phrase, "#7");
+    assert_eq!(e.url.as_deref(), Some("https://github.com/o/r/issues/7"));
+    // A phrase with no URL keeps every token (including internal spaces).
+    assert_eq!(parse_lexicon_line("Windows 3.1"), Some(entry("Windows 3.1", None)));
+    // A trailing non-URL token is part of the phrase, not a URL.
+    assert_eq!(parse_lexicon_line("Windows 3.1 beta"), Some(entry("Windows 3.1 beta", None)));
+}
+
+#[test]
+fn lexicon_strict_directive_recognised() {
+    assert!(is_strict_directive("# host-lint: strict"));
+    assert!(is_strict_directive("#host-lint: strict"));
+    assert!(!is_strict_directive("# some other comment"));
+    assert!(!is_strict_directive("Windows 3.1"));
+}
+
+#[test]
+fn lexicon_guard_accepts_legitimate_vocabulary() {
+    // A warn-tier phrase (a dotted code with a legitimizing word) is the intended
+    // case: it carries a letter and is not a flag-tier tell.
+    assert!(validate_lexicon_entry(&entry("Windows 3.1", None)).is_ok());
+    assert!(validate_lexicon_entry(&entry("Decision 2.1", None)).is_ok());
+    assert!(validate_lexicon_entry(&entry("COM1", None)).is_ok());
+    // PROJ-NNNN-shaped standards tokens are vocabulary, not citation-gated refs.
+    assert!(validate_lexicon_entry(&entry("RFC-2119", None)).is_ok());
+}
+
+#[test]
+fn lexicon_guard_g1_rejects_a_bare_master_key() {
+    // A bare numeral/dotted code with no legitimizing word would clear every
+    // occurrence tree-wide — refused.
+    assert!(validate_lexicon_entry(&entry("5.5", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("2.1", None)).is_err());
+}
+
+#[test]
+fn lexicon_guard_g2_rejects_laundering_a_real_tell() {
+    // The phrase is itself a flag-tier tell — you rename it, you do not allow-list
+    // it. (The 4B test tried exactly this: `lexicon add "Phase 5.5"`.)
+    assert!(validate_lexicon_entry(&entry("Phase 5.5", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("Step 3", None)).is_err());
+}
+
+#[test]
+fn lexicon_guard_citation_gates_tracker_refs() {
+    // A bare tracker ref must carry a URL (provenance), else it is a phantom.
+    assert!(validate_lexicon_entry(&entry("#7", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("#7", Some("https://github.com/o/r/issues/7"))).is_ok());
+    assert!(validate_lexicon_entry(&entry("connollydavid/host#7", None)).is_err());
+    assert!(validate_lexicon_entry(
+        &entry("connollydavid/host#7", Some("https://github.com/connollydavid/host/issues/7"))
+    )
+    .is_ok());
+}
+
+#[test]
+fn lexicon_strict_escalates_an_undeclared_warn_to_a_flag() {
+    // A bare dotted code warns by default, blocks under strict, and is silenced by
+    // a LEXICON entry that masks the full phrase.
+    let scan = |strict: bool, allow: &[&str]| {
+        let allow_lc: Vec<String> = allow.iter().map(|s| s.to_ascii_lowercase()).collect();
+        let mut m = Vec::new();
+        scan_text_with_allow_strict("see Decision 2.1 here", "README.md", &allow_lc, strict, &mut m);
+        m
+    };
+    assert_eq!(scan(false, &[]).first().map(|m| m.severity), Some(Severity::Warn));
+    assert_eq!(scan(true, &[]).first().map(|m| m.severity), Some(Severity::Flag));
+    assert!(scan(true, &["Decision 2.1"]).is_empty(), "an allowed phrase is not escalated");
+}
+
+#[test]
+fn lexicon_masking_clears_a_cited_tracker_ref() {
+    // "finding #7" is a flag (review noun + code); masking the cited "#7" phrase
+    // leaves "finding " with no code, so the line is clean.
+    let allow = vec!["#7".to_string()];
+    let mut m = Vec::new();
+    scan_text_with_allow_strict("see finding #7 in the log", "doc.md", &allow, true, &mut m);
+    assert!(m.is_empty(), "cited #7 should mask the review-code flag: {:?}", m.iter().map(|x| &x.term).collect::<Vec<_>>());
 }

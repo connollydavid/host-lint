@@ -65,6 +65,12 @@ echo "Phase 1: setup" | ./host-lint --stdin
 
 # Scan documents as prose for agentic tells (advisory)
 ./host-lint --prose PLAN.md README.md
+
+# Declare a legitimate tell-shaped token (the tool validates and appends)
+./host-lint lexicon add "Windows 3.1"
+./host-lint lexicon add "#7" --url https://github.com/connollydavid/host/issues/7
+./host-lint lexicon --check        # offline format gate (CI)
+./host-lint lexicon --check-urls   # network liveness of cited refs (CI)
 ```
 
 ### Adopting or upgrading
@@ -97,21 +103,27 @@ Each replaced commit gets a `Superseded-by:` trailer via `git notes` — the arc
 
 Rewriting changes every descendant sha: collaborators must re-clone or hard-reset, and external references to old shas go stale. Only do this on branches you control.
 
-### Sanctioned vocabulary (`.host-lint-allow`)
+### Sanctioned vocabulary (`LEXICON`)
 
-Some numbered tokens are legitimate vocabulary in a given repo and not tells: a version string (`NT 3.1`, `DOS 6.22`), a release identity, or a cross-repo filename you are forbidden to rename. List them, one phrase per line, in a `.host-lint-allow` file at the repo root:
+Some numbered tokens are legitimate vocabulary in a given repo and not tells: a version string (`NT 3.1`, `DOS 6.22`), a release identity, or a cross-repo filename you are forbidden to rename. Declare them, one entry per line, in a `LEXICON` file at the repo root. Each entry is the **full contextual phrase** that legitimizes the token; a bare numeral is never an entry. A **tracker reference carries its backing URL** on the same line:
 
 ```
+# host-lint: strict
 # sanctioned vocabulary — never flagged anywhere in this repo
 NT 3.1
 DOS 6.22
 Winsock 1.1
 section 1
+#7 https://github.com/connollydavid/host/issues/7
 ```
 
-Each listed phrase is masked out of every line before detection, case-insensitively and at word boundaries, so an occurrence of that exact phrase never flags — anywhere in the repo, in any mode (`--stdin`, files, `--all`, `--log`). The boundary requirement keeps an entry specific: allow-listing `phase 1` clears `phase 1` but not the longer tell `phase 12`, and a *different* tell on the same line still flags (`section 1 covers phase 4` still reports `phase 4`). Lines beginning with `#` are comments; blank lines are ignored. No file means no allow-list — the feature is opt-in per repo.
+Each entry's phrase is masked out of every line before detection, case-insensitively and at word boundaries, so an occurrence of that exact phrase never flags — anywhere in the repo, in any mode (`--stdin`, files, `--all`, `--log`). Only the phrase is masked; a trailing `http(s)://…` token is recorded as provenance, not masked. The boundary requirement keeps an entry specific: declaring `phase 1` clears `phase 1` but not the longer tell `phase 12`, and a *different* tell on the same line still flags (`section 1 covers phase 4` still reports `phase 4`). A comment is `#` followed by a non-digit (so `# note` and `## heading` are comments, while `#7 …` is a hash-number entry); blank lines are ignored. No file means no lexicon — the feature is opt-in per repo.
 
-This is for acknowledging legitimate vocabulary, not for silencing real tells: prefer renaming work after its content (see VOCABULARY.md) and reserve the allow-list for tokens that genuinely are not slop.
+**`# host-lint: strict`** — this committed directive escalates the identifier/reference warn tier to a blocking flag. The rationale: once a project can *declare* its legitimate tell-shaped tokens, an *un*declared one is a hard signal, not merely advisory. The block names its remedy: rename the work, or `host-lint lexicon add` the phrase.
+
+**Don't hand-author it — the tool owns every decision.** `host-lint lexicon add "<phrase>" [--url <url>]` validates and appends; `rm`, `list`, `--check` (offline format gate, for CI), and `--check-urls` (network liveness, for CI) round out the CRUD. Three guards refuse abuse: a bare numeral master key (`5.5`) that would clear every occurrence; a phrase that is *itself* a tell (`Phase 5.5` → rename it, you cannot allow-list it); and a tracker reference with no URL (a phantom `#999`). The URL is provenance: `lexicon --check-urls` re-derives liveness in a network-having lane, since the offline matcher cannot tell a real `#7` from a fake one.
+
+This legitimizes vocabulary; it does not silence real tells. Prefer renaming work after its content (see VOCABULARY.md) and reserve the lexicon for tokens that genuinely are not slop.
 
 ### Excluding paths (`.host-lintignore`)
 
@@ -132,7 +144,7 @@ A pattern is an exact repo-relative path (`MEMORY.md`), a `*` glob that matches
 within a single path segment (`plan/*/README.md`), or a trailing-slash directory
 prefix (`archive/`) that excludes everything beneath it. Only `--all` honours the
 file; explicit file arguments and `--stdin` are always scanned. This is a path
-filter, not a token exemption — for sanctioned *vocabulary* use `.host-lint-allow`.
+filter, not a token exemption — for sanctioned *vocabulary* use the `LEXICON`.
 
 ### Pre-commit Hook
 

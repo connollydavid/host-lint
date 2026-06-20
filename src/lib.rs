@@ -351,31 +351,165 @@ fn mask_allowed(line: &str, allow_lc: &[String]) -> String {
     String::from_utf8(out).unwrap_or_else(|_| line.to_string())
 }
 
+// === LEXICON: the provenance-enforced contextual allowlist (issue #13) ===
+//
+// A LEXICON file is the sole source of truth for tell-shaped tokens that are
+// legitimate vocabulary in a project (`Windows 3.1`, `COM1`) or cited tracker
+// references (`#7 https://…`). Each entry is the *full contextual phrase* that is
+// masked before detection; a bare numeral is never an entry. Because a sound,
+// declarable escape now exists, the naming-warn tier can escalate WARN -> ERROR
+// under the committed `strict` directive. The guards below keep a weak agent (or
+// a careless hand-edit) from abusing the escape.
+
+/// One parsed LEXICON entry: the contextual `phrase` masked before detection, and
+/// the optional cited `url` recorded as provenance (a tracker reference must carry
+/// one). The URL is metadata only — it is never masked, only the phrase is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LexiconEntry {
+    pub phrase: String,
+    pub url: Option<String>,
+}
+
+/// The `# host-lint: strict` directive that turns on warn->error escalation. A
+/// comment-shaped line so it is invisible to the phrase parser, explicit so it is
+/// auditable in the committed file.
+pub fn is_strict_directive(line: &str) -> bool {
+    line.trim()
+        .strip_prefix('#')
+        .is_some_and(|r| r.trim() == "host-lint: strict")
+}
+
+/// Parse one LEXICON line into an entry, or `None` for a blank, comment, or
+/// directive line. A comment is `#` followed by a non-digit (so `# note` and
+/// `## heading` are comments, but `#7 …` is a hash-number entry — this is what
+/// keeps the comment marker from colliding with the `#N` reference shape). A
+/// trailing `http(s)://…` whitespace token is split off as the cited URL.
+pub fn parse_lexicon_line(line: &str) -> Option<LexiconEntry> {
+    let t = line.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(rest) = t.strip_prefix('#') {
+        // `#` then a non-digit (or nothing) is a comment/directive, not an entry.
+        if !rest.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return None;
+        }
+    }
+    if let Some((head, last)) = t.rsplit_once(char::is_whitespace) {
+        if last.starts_with("http://") || last.starts_with("https://") {
+            return Some(LexiconEntry {
+                phrase: head.trim_end().to_string(),
+                url: Some(last.to_string()),
+            });
+        }
+    }
+    Some(LexiconEntry { phrase: t.to_string(), url: None })
+}
+
+/// A bare tracker reference: `#N` or `owner/repo#N`. These are citation-gated —
+/// an entry of this shape must carry a URL, because the offline matcher cannot
+/// tell a real `#7` from a phantom `#999`, so the URL is its only provenance.
+/// `PROJ-NNNN` is deliberately NOT gated here: it is syntactically identical to
+/// standards tokens the host writes (`RFC-2119`, `UTF-8`, `UAX-29`), so gating it
+/// would demand a phantom URL for legitimate vocabulary — it is treated as a
+/// plain phrase (carries a legitimizing word, governed by the guards below).
+fn is_tracker_ref(phrase: &str) -> bool {
+    if let Some(d) = phrase.strip_prefix('#') {
+        return !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit());
+    }
+    if let Some((path, num)) = phrase.split_once('#') {
+        let segs: Vec<&str> = path.split('/').collect();
+        return segs.len() == 2
+            && segs.iter().all(|s| !s.is_empty())
+            && !num.is_empty()
+            && num.bytes().all(|b| b.is_ascii_digit());
+    }
+    false
+}
+
+/// Validate one entry for registration. `Ok(())` means it may be trusted to mask;
+/// `Err(reason)` is a human-actionable rejection. Three guards, all reusing the
+/// detection engine rather than inventing new tell logic:
+///   - **citation gate** — a bare tracker ref (`#N`, `owner/repo#N`) must carry a URL.
+///   - **G1 master-key** — a non-reference phrase must hold at least one letter, so a
+///     bare `5.5` (which would silently clear every occurrence tree-wide) is refused.
+///   - **G2 no-laundering** — a phrase that is *itself* a flag-tier tell (a phase-synonym
+///     label, say) is refused: you rename a real tell, you do not allow-list it. A mere
+///     warn-tier phrase (`Windows 3.1`, `Decision 2.1`) is the legitimate case, accepted.
+pub fn validate_lexicon_entry(e: &LexiconEntry) -> Result<(), String> {
+    if e.phrase.is_empty() {
+        return Err("empty phrase".to_string());
+    }
+    if is_tracker_ref(&e.phrase) {
+        if e.url.is_none() {
+            return Err(format!(
+                "'{}' is a tracker reference with no URL — register it as '{} <url>' so the link is provenance, not a phantom",
+                e.phrase, e.phrase
+            ));
+        }
+        return Ok(());
+    }
+    if !e.phrase.chars().any(|c| c.is_ascii_alphabetic()) {
+        return Err(format!(
+            "'{}' is a bare numeral/code — a master key that would clear every occurrence; add the legitimizing word (e.g. 'Windows {}') or rename the work",
+            e.phrase, e.phrase
+        ));
+    }
+    if let Some((Severity::Flag, term)) = classify_line(&e.phrase, false) {
+        return Err(format!(
+            "'{}' is itself a tell ({}) — rename the work after its content; the lexicon legitimizes vocabulary, it does not silence real tells",
+            e.phrase, term
+        ));
+    }
+    Ok(())
+}
+
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     scan_text_with_allow(input, source, &[], matches);
 }
 
-// As `scan_text`, but a repo's sanctioned phrases (`.host-lint-allow`,
-// ASCII-lowercased by the caller) are masked out of each line before
-// classification. A line still flags on any tell the mask leaves behind, and
-// the reported `text` is the original line so the author sees real context.
+// As `scan_text`, but a repo's sanctioned phrases (the LEXICON, ASCII-lowercased
+// by the caller) are masked out of each line before classification. A line still
+// flags on any tell the mask leaves behind, and the reported `text` is the
+// original line so the author sees real context. Non-strict: the warn tier stays
+// advisory (this is the entry point external callers keep).
 pub fn scan_text_with_allow(
     input: &str,
     source: &str,
     allow_lc: &[String],
     matches: &mut Vec<Match>,
 ) {
+    scan_text_with_allow_strict(input, source, allow_lc, false, matches);
+}
+
+// The full scan: under `strict`, a naming-warn the mask did not clear escalates to
+// a blocking flag (issue #13 — the LEXICON makes a sound escape declarable, so an
+// *un*-declared tell-shaped token is now a hard signal, not merely advisory). The
+// escalated match carries a remedy in `cite` so the audience can act. Prose tells
+// (host-grammar) are a different tier and are not escalated here.
+pub fn scan_text_with_allow_strict(
+    input: &str,
+    source: &str,
+    allow_lc: &[String],
+    strict: bool,
+    matches: &mut Vec<Match>,
+) {
     let markdown = source.to_lowercase().ends_with(".md");
     for (i, line) in input.lines().enumerate() {
         let scanned = mask_allowed(line, allow_lc);
-        if let Some((severity, term)) = classify_line(&scanned, markdown) {
+        if let Some((mut severity, term)) = classify_line(&scanned, markdown) {
+            let mut cite = String::new();
+            if strict && severity == Severity::Warn {
+                severity = Severity::Flag;
+                cite = "not in LEXICON; rename or run: host-lint lexicon add".to_string();
+            }
             matches.push(Match {
                 file: source.to_string(),
                 line: i + 1,
                 text: line.trim().to_string(),
                 term,
                 severity,
-                cite: String::new(),
+                cite,
             });
         }
     }

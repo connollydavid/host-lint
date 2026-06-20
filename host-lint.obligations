@@ -10,6 +10,7 @@
 
 # --- Spec-integrity (covered by the check/analyse lane) ---
 config-default.max_roman_length      => structural
+config-default.strict                => structural
 entity-fields.Invocation             => structural
 entity-fields.Line                   => structural
 entity-fields.Match                  => structural
@@ -40,6 +41,8 @@ rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
 rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
 rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn
 rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns
+rule-success.EscalateUnderStrict              => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag
+rule-failure.EscalateUnderStrict.1            => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag
 rule-success.FlagSubjectDecoration            => test:subject_decoration_escalates_to_flag
 rule-failure.FlagSubjectDecoration.1          => test:body_decoration_stays_advisory
 rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalates_to_flag
