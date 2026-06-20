@@ -1,13 +1,13 @@
 #!/bin/bash
 # lint-skill.sh — mechanical conformance gates G1-G8 for SKILL.md
-# Exit 0 if all pass, 1 if any fail.
+# Exit 0 when every gate succeeds; non-zero on any failure.
 
 set -e
 
 SKILL_MD="${1:-SKILL.md}"
 FAIL=0
 
-pass() { echo "  PASS: $1"; }
+pass() { printf '  PASS %s\n' "$1"; }
 fail() { echo "  FAIL: $1"; FAIL=1; }
 
 echo "=== Conformance Gates ==="

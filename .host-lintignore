@@ -1,0 +1,18 @@
+# host-lint is a tell detector, so a few of its own files legitimately embed the
+# tells it detects. The per-file git-hook scan honors this list too (see main.rs),
+# so these never need `--no-verify`. Every entry was checked line-by-line — each
+# flag is an intended example/fixture or a test-harness false positive, never a real
+# tell hiding in plain sight:
+#   VOCABULARY.md / README.md / SKILL.md  — the detection spec + docs (tell examples)
+#   test-integration.sh / lint-skill.sh   — test-harness scripts (fixtures; pass/fail
+#                                            gate vocabulary trips the pass-synonym rule)
+#   tests/                                 — proptest fixtures with tell strings
+# src/lib.rs is NOT excluded: its 2 example comments were reworded so it no longer
+# flags (it only carries advisory warns on rule examples), so a real tell there is
+# still caught.
+VOCABULARY.md
+README.md
+SKILL.md
+test-integration.sh
+lint-skill.sh
+tests/

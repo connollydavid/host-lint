@@ -317,10 +317,11 @@ pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
 // Blank out every word-boundaried, case-insensitive occurrence of a sanctioned
 // phrase so the classifier never sees it. The boundary requirement (a
 // non-alphanumeric neighbour or a string edge on each side) is what keeps an
-// allow entry specific: `phase 1` masks `phase 1` but NOT the longer tell
-// `phase 12`, so allow-listing one occurrence cannot silently clear another.
-// `allow_lc` entries are pre-lowercased (ASCII) by the caller; ASCII-only
-// folding keeps byte indices aligned between the search copy and the original.
+// allow entry specific: a sanctioned phrase masks only its exact occurrence, not
+// a longer tell that merely shares its prefix, so allow-listing one occurrence
+// cannot silently clear another. `allow_lc` entries are pre-lowercased (ASCII) by
+// the caller; ASCII-only folding keeps byte indices aligned between the search
+// copy and the original.
 fn mask_allowed(line: &str, allow_lc: &[String]) -> String {
     if allow_lc.is_empty() {
         return line.to_string();

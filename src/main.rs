@@ -251,7 +251,23 @@ fn main() {
         eprintln!("Usage: host-lint [--stdin] [--prose] [--json] [--all] [--log] [files...]");
         process::exit(2);
     } else {
+        // Honor `.host-lintignore` for explicit file args too — the git hook scans
+        // per staged file (`host-lint <file>`), so the ignore list must apply here,
+        // not only in the `--all` walk. Otherwise a detector's own test fixtures
+        // (which must embed the tells they exercise) can never pass the hook, forcing
+        // `--no-verify`. Match on the same repo-relative, `/`-separated path.
+        let ignore = load_ignore(&root);
         for f in &files {
+            let abs = fs::canonicalize(f).unwrap_or_else(|_| Path::new(f).to_path_buf());
+            let rel = abs
+                .strip_prefix(&root)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| f.clone())
+                .trim_start_matches(['/', '\\'])
+                .replace('\\', "/");
+            if path_ignored(&rel, &ignore) {
+                continue;
+            }
             scan_file(Path::new(f), &allow, &mut matches);
         }
     }

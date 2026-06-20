@@ -150,7 +150,7 @@ done
 # --- Tier 3: leading code-as-name label (expect warn, rc=3) ---
 echo ""
 echo "--- Leading code label (expect warn) ---"
-for s in 'F1 — PE version stamp 3.10' '- **F2** — handle isolation' 'B3: the durable name follows'; do
+for s in 'F1: PE version stamp 3.10' 'F2: handle isolation' 'B3: the durable name follows'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
 done
@@ -166,9 +166,15 @@ done
 # --- Prose agentic tells (advisory warn, rc=3) ---
 echo ""
 echo "--- Prose tells warn, never block ---"
-for s in 'a clean title — with an em-dash' 'Let'"'"'s unpack the rollout' 'We delve into the tapestry'; do
+for s in 'a robust streamlined rollout' 'Let'"'"'s unpack the rollout' 'We delve into the tapestry'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
+done
+# Decoration on the --stdin subject line escalates to a flag (blocks), it does not
+# merely warn — the subject-decoration rule. Body prose and --prose stay advisory.
+for s in 'a clean title — with an em-dash' 'a curly “quoted” subject'; do
+    printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 1 ] && ok "flag: subject decoration: $s" || bad "flag: subject decoration: $s (rc=$rc)"
 done
 # A trope-dense paragraph trips the density summary in --json.
 dense="Let's unpack this. It's not a tweak, it's a revolution. We delve. We leverage. We harness. The result? Pure synergy. Fast, clean, and robust."
@@ -179,11 +185,11 @@ printf '%s' "$dense" | $BINARY --stdin --json 2>/dev/null | grep -q '"term": "te
 echo ""
 echo "--- Markdown awareness ---"
 md=$(mktemp --suffix=.md)
-printf 'Intro paragraph here.\n\n```\nIt'"'"'s not a tweak, it'"'"'s a revolution — we delve.\n```\n' > "$md"
+printf 'Intro paragraph here.\n\n```\nIt'"'"'s not a tweak, it'"'"'s a revolution, we delve.\n```\n' > "$md"
 $BINARY --prose "$md" >/dev/null 2>&1 && rc=0 || rc=$?
 [ "$rc" -eq 0 ] && ok "code block in .md is not prose" || bad "code block in .md (rc=$rc)"
 # the same text as plain stdin (not markdown) DOES warn
-printf 'It'"'"'s not a tweak, it'"'"'s a revolution — we delve.' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
+printf 'It'"'"'s not a tweak, it'"'"'s a revolution, we delve.' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
 [ "$rc" -eq 3 ] && ok "same text as plain prose warns" || bad "plain prose warns (rc=$rc)"
 rm -f "$md"
 
