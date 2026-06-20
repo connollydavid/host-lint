@@ -752,3 +752,27 @@ fn host_lint_ignore_block_skips_naming_tells_in_markdown() {
     // An indented code block is not a fence — its `Phase 1` line is scanned and flags.
     assert!(!scan("    ```host-lint:ignore\n    Phase 1\n    ```", "doc.md").is_empty());
 }
+
+// Regression for the plan/0022 design-review boxing: a host-lint:ignore region,
+// then a REGULAR fenced code block that must still be scanned, then a second
+// host-lint:ignore region. The bare fence closing the code block must not be read
+// as an ignore boundary, and only a bare fence (never an info-string fence) closes
+// an ignore region.
+#[test]
+fn host_lint_ignore_regions_flank_a_still_scanned_code_block() {
+    let scan = |text: &str, src: &str| {
+        let mut m = Vec::new();
+        scan_text_with_allow_strict(text, src, &[], false, &mut m);
+        m
+    };
+    // ignore(Phase 1) | regular rust(Phase 2) | ignore(Phase 3).
+    let doc = "```host-lint:ignore\ncite Phase 1 here\n```\n\n```rust\n// Phase 2 in real code\n```\n\n```host-lint:ignore\ncite Phase 3 here\n```";
+    let m = scan(doc, "doc.md");
+    assert_eq!(m.len(), 1, "only the regular code block's tell flags: {:?}",
+        m.iter().map(|x| (x.line, x.text.clone())).collect::<Vec<_>>());
+    assert!(m[0].text.contains("Phase 2"), "flagged line is the code-block tell: {:?}", m[0].text);
+    // An info-string fence (```rust) inside an ignore region does NOT close it —
+    // the whole region stays quarantined, fences and all.
+    assert!(scan("```host-lint:ignore\nPhase 1\n```rust\nPhase 2\n```", "doc.md").is_empty(),
+        "an info-string fence must not close an ignore region");
+}
