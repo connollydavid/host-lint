@@ -2,7 +2,7 @@ use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, classify_line,
     escalate_subject_decoration, is_numeral, path_ignored, scan_prose_text, scan_text,
-    scan_text_with_allow, Severity,
+    scan_text_with_allow, Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
 
@@ -265,6 +265,9 @@ proptest! {
         major in 0..100u32, minor in 0..100u32
     ) {
         // "NT 3.1", "SDK 2.1": an all-caps product/version designator, not a code.
+        // Exclude the filing-system warn-nouns (e.g. "WI" == "wi"): those are
+        // codes, not designators, and warn by design (see filing_noun_with_numeral_warns).
+        prop_assume!(!WARN_NOUNS.contains(&designator.to_ascii_lowercase().as_str()));
         let line = format!("runs on {} {}.{}", designator, major, minor);
         prop_assert!(check_warn(&line).is_none(), "line: {}", line);
     }

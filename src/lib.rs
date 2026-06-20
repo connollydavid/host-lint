@@ -9,8 +9,9 @@ const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
 
 // Tier 3 (warn): filing-system code nouns whose numbered label is a milestone
 // code used as a name. Warned, not flagged, because the same nouns have
-// ordinary uses ("see item 5 in the list").
-const WARN_NOUNS: &[&str] = &["work-item", "workitem", "wi"];
+// ordinary uses ("see item 5 in the list"). `pub` so property tests can exclude
+// these from the "safe designator" generator (a warn-noun like "WI" is not safe).
+pub const WARN_NOUNS: &[&str] = &["work-item", "workitem", "wi"];
 
 // Tier 3 (warn): a bare "N.N" code immediately preceded by one of these is a
 // version string or a cross-reference, not a milestone code — skip it.
