@@ -725,3 +725,30 @@ fn lexicon_masking_clears_a_cited_tracker_ref() {
     scan_text_with_allow_strict("see finding #7 in the log", "doc.md", &allow, true, &mut m);
     assert!(m.is_empty(), "cited #7 should mask the review-code flag: {:?}", m.iter().map(|x| &x.term).collect::<Vec<_>>());
 }
+
+// --- host-lint:ignore fenced blocks (call/0019, plan/0027) ---
+
+#[test]
+fn host_lint_ignore_block_skips_naming_tells_in_markdown() {
+    let scan = |text: &str, src: &str| {
+        let mut m = Vec::new();
+        scan_text_with_allow_strict(text, src, &[], false, &mut m);
+        m
+    };
+    // Inside a host-lint:ignore block: skipped (the literal-citation quarantine).
+    assert!(scan("```host-lint:ignore\nPhase 1 was the bootstrap\n```", "doc.md").is_empty());
+    // The same tell in prose: still flags.
+    assert!(!scan("Phase 1 was the bootstrap", "doc.md").is_empty());
+    // In a REGULAR fenced block: still flags — only host-lint:ignore is skipped.
+    assert!(!scan("```\nPhase 1 was the bootstrap\n```", "doc.md").is_empty());
+    // A different language tag is not the ignore tag: still flags.
+    assert!(!scan("```text\nPhase 1 was the bootstrap\n```", "doc.md").is_empty());
+    // Inline backtick: still flags — only blocks are skipped, never inline.
+    assert!(!scan("see `Phase 1` here", "doc.md").is_empty());
+    // Non-markdown (a commit message): the fence is literal text, the tell flags.
+    assert!(!scan("```host-lint:ignore\nPhase 1\n```", "stdin").is_empty());
+    // Detection resumes after the block closes.
+    assert!(!scan("```host-lint:ignore\nold Phase 1\n```\nnow Phase 2 here", "doc.md").is_empty());
+    // An indented code block is not a fence — its `Phase 1` line is scanned and flags.
+    assert!(!scan("    ```host-lint:ignore\n    Phase 1\n    ```", "doc.md").is_empty());
+}

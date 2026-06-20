@@ -516,6 +516,20 @@ pub fn scan_text_with_allow(
     scan_text_with_allow_strict(input, source, allow_lc, false, matches);
 }
 
+// The info string of a markdown fence line (the text after ``` / ~~~), or `None`
+// if `line` is not a fence. A fence is opened by 3+ backticks or tildes with at
+// most 3 leading spaces; 4+ spaces is an indented code block, not a fence. A bare
+// fence (empty info) closes a block; `host-lint:ignore` as the info opens a region
+// the naming scan skips (call/0019). Used only for markdown sources.
+fn fence_info(line: &str) -> Option<&str> {
+    if line.chars().take_while(|c| *c == ' ').count() >= 4 {
+        return None;
+    }
+    let t = line.trim_start();
+    let rest = t.strip_prefix("```").or_else(|| t.strip_prefix("~~~"))?;
+    Some(rest.trim())
+}
+
 // The full scan: under `strict`, a naming-warn the mask did not clear escalates to
 // a blocking flag (issue #13 — the LEXICON makes a sound escape declarable, so an
 // *un*-declared tell-shaped token is now a hard signal, not merely advisory). The
@@ -529,7 +543,24 @@ pub fn scan_text_with_allow_strict(
     matches: &mut Vec<Match>,
 ) {
     let markdown = source.to_lowercase().ends_with(".md");
+    // A `host-lint:ignore` fenced block quarantines literal reference content (the
+    // retired-ordinal dictionary, archived citations) — its lines are skipped, fences
+    // included (call/0019). Markdown only; a regular code block and inline backticks
+    // stay linted, so a tell cannot be laundered by inline-quoting it.
+    let mut in_ignore_block = false;
     for (i, line) in input.lines().enumerate() {
+        if markdown {
+            if in_ignore_block {
+                if matches!(fence_info(line), Some(info) if info.is_empty()) {
+                    in_ignore_block = false;
+                }
+                continue;
+            }
+            if fence_info(line) == Some("host-lint:ignore") {
+                in_ignore_block = true;
+                continue;
+            }
+        }
         let scanned = mask_allowed(line, allow_lc);
         if let Some((mut severity, term)) = classify_line(&scanned, markdown) {
             let mut cite = String::new();

@@ -148,6 +148,33 @@ prefix (`archive/`) that excludes everything beneath it. Only `--all` honours th
 file; explicit file arguments and `--stdin` are always scanned. This is a path
 filter, not a token exemption — for sanctioned *vocabulary* use the `LEXICON`.
 
+### Quoting tells in docs (`host-lint:ignore` blocks)
+
+Sometimes a markdown document must reproduce a tell-shaped token *literally* — a
+retired-ordinal dictionary mapping old names to new, an archived citation, a
+"don't do this" example. Wrap that literal reference content in a fenced code block
+tagged `host-lint:ignore` and the naming scan skips it:
+
+    ```host-lint:ignore
+    Phase 1 / PHASE1.md  ->  Bootstrap / BOOTSTRAP.md
+    Phase 2 / PHASE2.md  ->  CI Pipeline / CI-PIPELINE.md
+    ```
+
+This is the idiomatic markdown info-string pattern (the way ` ```mermaid ` tags a
+diagram): a plain code block to a renderer, a clear "excluded reference data" signal
+to a reader. The exemption is deliberate and visible in the source — never a blanket
+file mute, never `--no-verify`. Three boundaries keep it honest:
+
+- **Markdown only.** In a commit message or a code file the fence is literal text; the
+  tell still flags.
+- **Tagged blocks only.** A regular ` ``` ` block (or one tagged `rust`, `text`, …) is
+  still scanned — only `host-lint:ignore` is skipped.
+- **Blocks, not inline.** An inline `` `Phase 1` `` in prose still flags, so a tell
+  cannot be laundered by inline-quoting it.
+
+A tell-shaped token in linted content is legitimate only as a real tracker reference,
+a `LEXICON` entry, or inside a `host-lint:ignore` block; anything else is reworded out.
+
 ### Pre-commit Hook
 
 ```bash
