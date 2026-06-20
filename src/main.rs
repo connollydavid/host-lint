@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, LexiconEntry, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, validate_lexicon_entry};
+use host_lint::{Match, Severity, LexiconEntry, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -28,11 +28,12 @@ fn repo_root() -> String {
 struct Lexicon {
     phrases_lc: Vec<String>,
     strict: bool,
+    jira_keys: Vec<String>,
     entries: Vec<LexiconEntry>,
 }
 
 fn load_lexicon(root: &str) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, entries: Vec::new() };
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), entries: Vec::new() };
     if root.is_empty() {
         return lex;
     }
@@ -40,13 +41,22 @@ fn load_lexicon(root: &str) -> Lexicon {
         Ok(c) => c,
         Err(_) => return lex,
     };
+    // Directives first (strict, jira-key), collected before any entry so an
+    // entry's validation sees every declared key regardless of line order.
     for line in content.lines() {
         if is_strict_directive(line) {
             lex.strict = true;
+        } else if let Some(keys) = parse_jira_keys(line) {
+            lex.jira_keys.extend(keys);
+        }
+    }
+    // Then the entries, validated against the collected directives.
+    for line in content.lines() {
+        if is_strict_directive(line) || parse_jira_keys(line).is_some() {
             continue;
         }
         let Some(entry) = parse_lexicon_line(line) else { continue };
-        if let Err(reason) = validate_lexicon_entry(&entry) {
+        if let Err(reason) = validate_lexicon_entry(&entry, &lex.jira_keys) {
             eprintln!("host-lint: LEXICON entry ignored ({reason})");
             continue;
         }
@@ -81,12 +91,13 @@ fn run_lexicon(root: &str, args: &[String]) -> ! {
             };
             let url = parse_url_flag(&args[2..]);
             let entry = LexiconEntry { phrase: phrase.clone(), url };
-            if let Err(reason) = validate_lexicon_entry(&entry) {
+            let existing = load_lexicon(root);
+            if let Err(reason) = validate_lexicon_entry(&entry, &existing.jira_keys) {
                 eprintln!("host-lint: refused ({reason})");
                 process::exit(1);
             }
             // Idempotent: a phrase already present is a no-op, not an error.
-            if load_lexicon(root).entries.iter().any(|e| e.phrase.eq_ignore_ascii_case(&entry.phrase)) {
+            if existing.entries.iter().any(|e| e.phrase.eq_ignore_ascii_case(&entry.phrase)) {
                 println!("already present: {}", entry.phrase);
                 process::exit(0);
             }
@@ -145,14 +156,20 @@ fn run_lexicon(root: &str, args: &[String]) -> ! {
         }
         Some("--check") => {
             let content = fs::read_to_string(&path).unwrap_or_default();
+            let mut jira_keys: Vec<String> = Vec::new();
+            for line in content.lines() {
+                if let Some(keys) = parse_jira_keys(line) {
+                    jira_keys.extend(keys);
+                }
+            }
             let (mut total, mut errs) = (0, 0);
             for (i, line) in content.lines().enumerate() {
-                if is_strict_directive(line) {
+                if is_strict_directive(line) || parse_jira_keys(line).is_some() {
                     continue;
                 }
                 let Some(e) = parse_lexicon_line(line) else { continue };
                 total += 1;
-                if let Err(reason) = validate_lexicon_entry(&e) {
+                if let Err(reason) = validate_lexicon_entry(&e, &jira_keys) {
                     eprintln!("{}:{}: invalid entry ({reason})", LEXICON_FILE, i + 1);
                     errs += 1;
                 }

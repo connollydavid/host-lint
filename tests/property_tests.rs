@@ -1,9 +1,9 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, classify_line,
-    escalate_subject_decoration, is_numeral, is_strict_directive, parse_lexicon_line, path_ignored,
-    scan_prose_text, scan_text, scan_text_with_allow, scan_text_with_allow_strict,
-    validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
+    escalate_subject_decoration, is_numeral, is_strict_directive, parse_jira_keys,
+    parse_lexicon_line, path_ignored, scan_prose_text, scan_text, scan_text_with_allow,
+    scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
 
@@ -639,39 +639,66 @@ fn lexicon_strict_directive_recognised() {
 fn lexicon_guard_accepts_legitimate_vocabulary() {
     // A warn-tier phrase (a dotted code with a legitimizing word) is the intended
     // case: it carries a letter and is not a flag-tier tell.
-    assert!(validate_lexicon_entry(&entry("Windows 3.1", None)).is_ok());
-    assert!(validate_lexicon_entry(&entry("Decision 2.1", None)).is_ok());
-    assert!(validate_lexicon_entry(&entry("COM1", None)).is_ok());
-    // PROJ-NNNN-shaped standards tokens are vocabulary, not citation-gated refs.
-    assert!(validate_lexicon_entry(&entry("RFC-2119", None)).is_ok());
+    assert!(validate_lexicon_entry(&entry("Windows 3.1", None), &[]).is_ok());
+    assert!(validate_lexicon_entry(&entry("Decision 2.1", None), &[]).is_ok());
+    assert!(validate_lexicon_entry(&entry("COM1", None), &[]).is_ok());
+    // PROJ-NNNN-shaped standards tokens are vocabulary unless a jira-key is declared.
+    assert!(validate_lexicon_entry(&entry("RFC-2119", None), &[]).is_ok());
 }
 
 #[test]
 fn lexicon_guard_g1_rejects_a_bare_master_key() {
     // A bare numeral/dotted code with no legitimizing word would clear every
     // occurrence tree-wide — refused.
-    assert!(validate_lexicon_entry(&entry("5.5", None)).is_err());
-    assert!(validate_lexicon_entry(&entry("2.1", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("5.5", None), &[]).is_err());
+    assert!(validate_lexicon_entry(&entry("2.1", None), &[]).is_err());
 }
 
 #[test]
 fn lexicon_guard_g2_rejects_laundering_a_real_tell() {
     // The phrase is itself a flag-tier tell — you rename it, you do not allow-list
     // it. (The 4B test tried exactly this: `lexicon add "Phase 5.5"`.)
-    assert!(validate_lexicon_entry(&entry("Phase 5.5", None)).is_err());
-    assert!(validate_lexicon_entry(&entry("Step 3", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("Phase 5.5", None), &[]).is_err());
+    assert!(validate_lexicon_entry(&entry("Step 3", None), &[]).is_err());
 }
 
 #[test]
 fn lexicon_guard_citation_gates_tracker_refs() {
     // A bare tracker ref must carry a URL (provenance), else it is a phantom.
-    assert!(validate_lexicon_entry(&entry("#7", None)).is_err());
-    assert!(validate_lexicon_entry(&entry("#7", Some("https://github.com/o/r/issues/7"))).is_ok());
-    assert!(validate_lexicon_entry(&entry("connollydavid/host#7", None)).is_err());
+    assert!(validate_lexicon_entry(&entry("#7", None), &[]).is_err());
+    assert!(validate_lexicon_entry(&entry("#7", Some("https://github.com/o/r/issues/7")), &[]).is_ok());
+    assert!(validate_lexicon_entry(&entry("connollydavid/host#7", None), &[]).is_err());
     assert!(validate_lexicon_entry(
-        &entry("connollydavid/host#7", Some("https://github.com/connollydavid/host/issues/7"))
+        &entry("connollydavid/host#7", Some("https://github.com/connollydavid/host/issues/7")),
+        &[]
     )
     .is_ok());
+}
+
+#[test]
+fn lexicon_jira_key_gating_is_opt_in() {
+    let proj = vec!["PROJ".to_string()];
+    // Without a declared key, PROJ-NNNN is plain vocabulary (no URL required) —
+    // this is what keeps standards tokens (RFC-2119, UTF-8) from being forced to cite.
+    assert!(validate_lexicon_entry(&entry("PROJ-1234", None), &[]).is_ok());
+    // With PROJ declared, PROJ-1234 is a citation-gated tracker ref: URL required.
+    assert!(validate_lexicon_entry(&entry("PROJ-1234", None), &proj).is_err());
+    assert!(validate_lexicon_entry(&entry("PROJ-1234", Some("https://jira.example/PROJ-1234")), &proj).is_ok());
+    // A different key is unaffected: declaring PROJ does NOT gate RFC-2119.
+    assert!(validate_lexicon_entry(&entry("RFC-2119", None), &proj).is_ok());
+}
+
+#[test]
+fn lexicon_jira_directive_parses_declared_keys() {
+    assert_eq!(parse_jira_keys("# host-lint: jira-key PROJ"), Some(vec!["PROJ".to_string()]));
+    assert_eq!(
+        parse_jira_keys("# host-lint: jira-key PROJ TEAM2"),
+        Some(vec!["PROJ".to_string(), "TEAM2".to_string()])
+    );
+    // Lowercase / non-key tokens are dropped; an empty declaration is None.
+    assert_eq!(parse_jira_keys("# host-lint: jira-key"), None);
+    assert_eq!(parse_jira_keys("# host-lint: strict"), None);
+    assert_eq!(parse_jira_keys("PROJ-1"), None);
 }
 
 #[test]

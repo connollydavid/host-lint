@@ -232,6 +232,11 @@ $BINARY lexicon list 2>/dev/null | grep -q "Windows 3.1" && ok "list shows vocab
 $BINARY lexicon --check >/dev/null 2>&1 && ok "--check clean" || bad "--check clean"
 $BINARY lexicon rm "Windows 3.1" >/dev/null 2>&1 && ok "rm entry" || bad "rm entry"
 $BINARY lexicon list 2>/dev/null | grep -q "Windows 3.1" && bad "rm removed it" || ok "rm removed it"
+# jira-key gating is opt-in: declaring a project key gates PROJ-NNNN, nothing else.
+printf '# host-lint: jira-key PROJ\n' > "$LEX/LEXICON"
+$BINARY lexicon add "PROJ-1" >/dev/null 2>&1 && bad "declared jira-key needs URL" || ok "declared jira-key needs URL"
+$BINARY lexicon add "PROJ-1" --url https://jira.example/PROJ-1 >/dev/null 2>&1 && ok "declared jira-key with URL" || bad "declared jira-key with URL"
+$BINARY lexicon add "RFC-2119" >/dev/null 2>&1 && ok "undeclared key stays vocab" || bad "undeclared key stays vocab"
 # Strict escalation: the directive turns an undeclared warn-tier code into a block.
 printf '# host-lint: strict\nDecision 2.1\n' > "$LEX/LEXICON"
 printf 'see Decision 2.1 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?

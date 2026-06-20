@@ -406,23 +406,55 @@ pub fn parse_lexicon_line(line: &str) -> Option<LexiconEntry> {
     Some(LexiconEntry { phrase: t.to_string(), url: None })
 }
 
-/// A bare tracker reference: `#N` or `owner/repo#N`. These are citation-gated —
-/// an entry of this shape must carry a URL, because the offline matcher cannot
-/// tell a real `#7` from a phantom `#999`, so the URL is its only provenance.
-/// `PROJ-NNNN` is deliberately NOT gated here: it is syntactically identical to
-/// standards tokens the host writes (`RFC-2119`, `UTF-8`, `UAX-29`), so gating it
-/// would demand a phantom URL for legitimate vocabulary — it is treated as a
-/// plain phrase (carries a legitimizing word, governed by the guards below).
-fn is_tracker_ref(phrase: &str) -> bool {
+/// A jira-key project key (`PROJ`, `TEAM2`): an uppercase letter then uppercase
+/// letters or digits. A LEXICON opts a key into citation-gating via the directive
+/// `# host-lint: jira-key <KEY>`.
+fn is_jira_key(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_uppercase())
+        && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+/// Parse a `# host-lint: jira-key <KEY> [<KEY>...]` directive into its declared
+/// project keys, or `None` for any other line. Comment-shaped, so the phrase
+/// parser ignores it — the same idiom as the strict directive.
+pub fn parse_jira_keys(line: &str) -> Option<Vec<String>> {
+    let body = line.trim().strip_prefix('#')?.trim();
+    let rest = body.strip_prefix("host-lint: jira-key")?;
+    if !rest.is_empty() && !rest.starts_with(|c: char| c.is_whitespace()) {
+        return None;
+    }
+    let keys: Vec<String> = rest.split_whitespace().filter(|k| is_jira_key(k)).map(String::from).collect();
+    if keys.is_empty() { None } else { Some(keys) }
+}
+
+/// A bare tracker reference whose only provenance is a URL: `#N`, `owner/repo#N`,
+/// or an opted-in jira-key `PROJ-NNNN`. The offline matcher cannot tell a real
+/// `#7` from a phantom `#999`, so an entry of this shape must carry a URL.
+/// `PROJ-NNNN` is gated ONLY for a project key the LEXICON declares (`# host-lint:
+/// jira-key PROJ`) — opt-in, because the shape is identical to standards tokens the
+/// host writes (`RFC-2119`, `UTF-8`), which must stay plain vocabulary by default.
+fn is_tracker_ref(phrase: &str, jira_keys: &[String]) -> bool {
     if let Some(d) = phrase.strip_prefix('#') {
         return !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit());
     }
     if let Some((path, num)) = phrase.split_once('#') {
         let segs: Vec<&str> = path.split('/').collect();
-        return segs.len() == 2
+        if segs.len() == 2
             && segs.iter().all(|s| !s.is_empty())
             && !num.is_empty()
-            && num.bytes().all(|b| b.is_ascii_digit());
+            && num.bytes().all(|b| b.is_ascii_digit())
+        {
+            return true;
+        }
+    }
+    if let Some((key, num)) = phrase.split_once('-') {
+        if jira_keys.iter().any(|k| k == key)
+            && !num.is_empty()
+            && num.bytes().all(|b| b.is_ascii_digit())
+        {
+            return true;
+        }
     }
     false
 }
@@ -430,17 +462,19 @@ fn is_tracker_ref(phrase: &str) -> bool {
 /// Validate one entry for registration. `Ok(())` means it may be trusted to mask;
 /// `Err(reason)` is a human-actionable rejection. Three guards, all reusing the
 /// detection engine rather than inventing new tell logic:
-///   - **citation gate** — a bare tracker ref (`#N`, `owner/repo#N`) must carry a URL.
+///   - **citation gate** — a bare tracker ref (`#N`, `owner/repo#N`, or an opted-in
+///     jira-key `PROJ-NNNN`) must carry a URL. `jira_keys` are the project keys the
+///     LEXICON declared; empty = no jira-key gating, so `RFC-2119` stays vocabulary.
 ///   - **G1 master-key** — a non-reference phrase must hold at least one letter, so a
 ///     bare `5.5` (which would silently clear every occurrence tree-wide) is refused.
 ///   - **G2 no-laundering** — a phrase that is *itself* a flag-tier tell (a phase-synonym
 ///     label, say) is refused: you rename a real tell, you do not allow-list it. A mere
 ///     warn-tier phrase (`Windows 3.1`, `Decision 2.1`) is the legitimate case, accepted.
-pub fn validate_lexicon_entry(e: &LexiconEntry) -> Result<(), String> {
+pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<(), String> {
     if e.phrase.is_empty() {
         return Err("empty phrase".to_string());
     }
-    if is_tracker_ref(&e.phrase) {
+    if is_tracker_ref(&e.phrase, jira_keys) {
         if e.url.is_none() {
             return Err(format!(
                 "'{}' is a tracker reference with no URL — register it as '{} <url>' so the link is provenance, not a phantom",
