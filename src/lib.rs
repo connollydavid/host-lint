@@ -502,3 +502,51 @@ fn seg_glob(pat: &[u8], s: &[u8]) -> bool {
 pub fn is_scannable(ext: &str) -> bool {
     matches!(ext, "" | "md" | "txt" | "rst" | "py" | "rs" | "js" | "ts" | "jsx" | "tsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp" | "rb" | "sh" | "yaml" | "yml" | "toml" | "json" | "xml" | "html" | "css" | "sql" | "r" | "lua" | "swift" | "kt" | "scala" | "ex" | "exs" | "clj" | "hs" | "ml" | "vim" | "ps1" | "bat" | "cmake" | "makefile")
 }
+
+// Kani proof harnesses (the host-prove `kani-conformance` lane). `#[cfg(kani)]`
+// keeps them out of `cargo build`/`cargo test`, so the release artifact stays
+// byte-identical — they run only under `cargo kani`. Targets are chosen to be
+// CBMC-tractable: char- and byte-level predicates, NOT `str::split`/`Vec`/`String`,
+// which pull in `memchr` + heap modeling and blow CBMC up. Each proves a contract
+// for ALL byte values at a bounded length — a stronger discharge than an example
+// test. Dispositioned `kani:<harness>` in host-lint.obligations.
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    // "#<digit>" is an internal code label (rule-success.DetectInternalCodeAsName).
+    // is_review_code is char-based (strip_prefix + chars) — no split, no memchr.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn verify_review_code_accepts_hash_digit() {
+        let d: u8 = kani::any();
+        kani::assume(d.is_ascii_digit());
+        let bytes = [b'#', d];
+        let word = core::str::from_utf8(&bytes).unwrap();
+        assert!(is_review_code(word));
+    }
+
+    // A two-letter word (e.g. a device noun like "NT") is NOT a code label
+    // (rule-failure.DetectInternalCodeAsName.1): a letter prefix needs digits after.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn verify_review_code_rejects_two_letters() {
+        let a: u8 = kani::any();
+        let b: u8 = kani::any();
+        kani::assume(a.is_ascii_alphabetic() && b.is_ascii_alphabetic());
+        let bytes = [a, b];
+        let word = core::str::from_utf8(&bytes).unwrap();
+        assert!(!is_review_code(word));
+    }
+
+    // The '*' segment-glob wildcard matches any segment — a pure byte-index matcher
+    // (no heap, no memchr): the Kani-ideal shape. Proves wildcard semantics and
+    // panic-freedom for every 4-byte segment. (Extra code-correctness proof; the
+    // .host-lintignore glob matcher has no allium obligation of its own.)
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn verify_seg_glob_star_matches_any() {
+        let s: [u8; 4] = kani::any();
+        assert!(seg_glob(b"*", &s));
+    }
+}

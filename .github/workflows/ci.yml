@@ -79,9 +79,20 @@ jobs:
       - name: allium plan (test obligations)
         run: allium plan host-lint.allium
       - name: Install host-lifecycle (pinned)
-        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev d91dae3
-      - name: Discharge obligations (every obligation dispositioned, test refs exist)
-        run: host-lifecycle obligations host-lint.allium --tests tests
+        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev 28504bb
+      - name: Discharge obligations (every obligation dispositioned, test + kani refs exist)
+        run: host-lifecycle obligations host-lint.allium --tests tests --prove src
+
+  kani:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Kani (pinned)
+        run: |
+          cargo install --locked kani-verifier --version 0.67.0
+          cargo kani setup
+      - name: Verify proof harnesses (code-conformance tier)
+        run: cargo kani --output-format terse
 
   test:
     runs-on: ubuntu-latest

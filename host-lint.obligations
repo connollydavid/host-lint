@@ -1,9 +1,12 @@
 # host-lint.obligations — disposition for every `allium plan` obligation.
-# `host-lifecycle obligations host-lint.allium --tests tests` checks this is
-# complete (no obligation undispositioned, no stale entry, every test: name real).
-#   <id> => test:<name> | structural | waived: <reason>
+# `host-lifecycle obligations host-lint.allium --tests tests --prove src` checks this
+# is complete (no obligation undispositioned, no stale entry, every test: name real,
+# every kani: harness name present in src).
+#   <id> => test:<name> | structural | waived: <reason> | kani:<harness>
 # structural = the spec's own `allium check`/`analyse` lane discharges it (field
 # presence, enum comparability, surface shape, declared transition graph).
+# kani:<harness> = a Kani proof harness (#[cfg(kani)] in src/lib.rs) discharges it
+# for all bounded inputs — the host-prove code-conformance tier (stronger than a test).
 
 # --- Spec-integrity (covered by the check/analyse lane) ---
 config-default.max_roman_length      => structural
@@ -31,8 +34,8 @@ rule-entity-creation.DetectLeadingCodeLabel.1 => test:leading_numeral_label_pref
 rule-success.DetectBareNumeralHeader          => test:bare_numeral_headers_are_detected
 rule-failure.DetectBareNumeralHeader.1        => test:version_headings_are_not_bare_numeral_headers
 rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_detected
-rule-success.DetectInternalCodeAsName         => test:leading_code_label_warns
-rule-failure.DetectInternalCodeAsName.1       => test:multi_letter_device_noun_is_not_a_code_label
+rule-success.DetectInternalCodeAsName         => kani:verify_review_code_accepts_hash_digit
+rule-failure.DetectInternalCodeAsName.1       => kani:verify_review_code_rejects_two_letters
 rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
 rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
 rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn
