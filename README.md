@@ -115,9 +115,11 @@ This is for acknowledging legitimate vocabulary, not for silencing real tells: p
 
 ### Excluding paths (`.host-lintignore`)
 
-`--all` is a whole-tree audit. To exclude paths from it — an append-only record, a
-vendored tree, generated files — list them in a `.host-lintignore` at the repo root
-(gitignore-lite: one pattern per line, `#` comments and blanks ignored):
+`--all` audits the repo's tracked files (`git ls-files`), so gitignored build output
+and untracked vendored trees are already excluded. To exclude *tracked* paths from it
+— an append-only record, a committed vendored tree, tracked generated files — list
+them in a `.host-lintignore` at the repo root (gitignore-lite: one pattern per line,
+`#` comments and blanks ignored):
 
 ```
 # append-only history is acknowledged, not re-audited

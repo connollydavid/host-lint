@@ -110,20 +110,44 @@ fn run_all_files(root: &str, allow: &[String], ignore: &[String], matches: &mut 
     if root.is_empty() {
         return;
     }
-
-    for entry in walkdir_simple(root) {
-        // Match the dir skips and the ignore patterns on the repo-relative path.
-        let rel = entry
-            .strip_prefix(root)
-            .unwrap_or(&entry)
-            .trim_start_matches(['/', '\\']);
-        if rel.starts_with(".git") || rel.starts_with("node_modules") || rel.starts_with("target") || rel.starts_with("vendor") {
-            continue;
+    // `--all` audits the repo's tracked files (as the README states). Listing them
+    // via `git ls-files` respects `.gitignore` by construction: gitignored build
+    // output, vendored dependencies, and `.git/` are untracked and never appear, so
+    // a naive tree walk's slowness and noise are gone without a hardcoded skip list.
+    // `-z` is robust to paths containing spaces or newlines; paths are root-relative
+    // and `/`-separated. `.host-lintignore` still filters tracked-but-sanctioned paths.
+    let output = match process::Command::new("git")
+        .args(["-C", root, "ls-files", "-z"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "host-lint: --all needs a git repository (git ls-files failed: {})",
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            process::exit(2);
         }
+        Err(e) => {
+            eprintln!("host-lint: --all needs git on PATH: {e}");
+            process::exit(2);
+        }
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    for rel in text.split('\0').filter(|s| !s.is_empty()) {
         if path_ignored(rel, ignore) {
             continue;
         }
-        scan_file(Path::new(&entry), allow, matches);
+        let path = Path::new(root).join(rel);
+        // git tracks symlinks as symlinks; skip them — following a file symlink would
+        // scan its target twice (the target, if tracked, is listed and scanned
+        // directly), and a dir symlink (e.g. a cycle) is not a file to scan anyway.
+        if fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
+        }
+        // scan_file additionally skips non-files (tracked-but-deleted), CI files,
+        // and unscannable extensions.
+        scan_file(&path, allow, matches);
     }
 }
 
@@ -173,34 +197,6 @@ fn run_log(allow: &[String], matches: &mut Vec<Match>) {
         let label = if sha.len() >= 7 { &sha[..7] } else { sha };
         scan_text_with_allow(message, label, allow, matches);
     }
-}
-
-fn walkdir_simple(dir: &str) -> Vec<String> {
-    let mut files = Vec::new();
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return files,
-    };
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        // skip symlinks: following them scans targets twice and loops on cycles
-        match fs::symlink_metadata(&path) {
-            Ok(meta) if meta.file_type().is_symlink() => continue,
-            Err(_) => continue,
-            _ => {}
-        }
-        let path_str = path.to_string_lossy().to_string();
-        if path.is_dir() {
-            files.extend(walkdir_simple(&path_str));
-        } else if path.is_file() {
-            files.push(path_str);
-        }
-    }
-    files
 }
 
 fn main() {

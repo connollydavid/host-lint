@@ -110,7 +110,7 @@ else
     bad "--log output labelled with commit sha"
 fi
 
-# --- Symlink handling (--all) ---
+# --- Symlink handling (--all over git-tracked files) ---
 echo ""
 echo "--- Symlink handling (--all) ---"
 walk="$tmpdir/walk-repo"
@@ -118,6 +118,12 @@ mkdir -p "$walk/sub"
 printf '## Stage 2 of rollout\n' > "$walk/sub/notes.md"
 ln -s sub "$walk/link"
 ln -s . "$walk/loop"
+# `--all` audits tracked files (`git ls-files`); track the file and the symlinks
+# (incl. the `loop -> .` cycle) so the scan exercises the symlink skip. git records
+# symlinks by target without following them, so `add -A` does not recurse the cycle.
+git init -q "$walk"
+git -C "$walk" -c user.name=t -c user.email=t@t add -A
+git -C "$walk" -c user.name=t -c user.email=t@t commit -q -m "init"
 out=$(cd "$walk" && timeout 10 "$BINARY_ABS" --all 2>&1) && status=0 || status=$?
 if [ $status -eq 1 ]; then
     ok "--all terminates with cyclic symlink"
