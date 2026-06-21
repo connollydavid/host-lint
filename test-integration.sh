@@ -199,6 +199,37 @@ printf 'It'"'"'s not a tweak, it'"'"'s a revolution, we delve.' | $BINARY --stdi
 [ "$rc" -eq 3 ] && ok "same text as plain prose warns" || bad "plain prose warns (rc=$rc)"
 rm -f "$md"
 
+# --- --docs: repo-wide prose lane (markdown only, honors .host-lintignore) ---
+echo ""
+echo "--- --docs (repo-wide prose) ---"
+docs=$(mktemp -d)
+git -C "$docs" init -q
+# An authored doc with prose tropes (negative-parallelism + em-dash + tricolon).
+printf "It's not a tweak, it's a revolution, we delve — fast, clean, and robust.\n" > "$docs/guide.md"
+# Code with an em-dash in a comment: --docs must NOT prose-scan it (scope = docs).
+printf 'fn f() {} // a comment — with a dash\n' > "$docs/src.rs"
+# An immutable record excluded via .host-lintignore.
+printf 'A frozen note — with a dash.\n' > "$docs/RECORD.md"
+printf 'RECORD.md\n' > "$docs/.host-lintignore"
+git -C "$docs" add -A
+git -C "$docs" -c user.name=t -c user.email=t@t commit -q -m "init"
+out=$(cd "$docs" && "$BINARY_ABS" --docs 2>&1) && rc=0 || rc=$?
+echo "$out" | grep -q "guide.md" && ok "--docs flags authored markdown prose" || bad "--docs flags authored markdown prose"
+[ "$rc" -eq 3 ] && ok "--docs warns (exit 3) on tropes" || bad "--docs warns exit 3 (rc=$rc)"
+echo "$out" | grep -q "src.rs" && bad "--docs must not prose-scan code" || ok "--docs skips code (.rs)"
+echo "$out" | grep -q "RECORD.md" && bad "--docs must honor .host-lintignore" || ok "--docs honors .host-lintignore"
+rm -rf "$docs"
+
+# --- plan/0031: prose output is located (line:col) + fix-hinted ---
+echo ""
+echo "--- prose output: col + fix hint ---"
+pmd=$(mktemp --suffix=.md)
+printf 'A sentence with a dash — right here in it.\n' > "$pmd"
+pout=$($BINARY --prose "$pmd" 2>&1) || true
+echo "$pout" | grep -qE ':[0-9]+:[0-9]+: warning: — .*\[fix:' \
+    && ok "decoration carries line:col + fix hint" || bad "decoration line:col + fix hint (got: $pout)"
+rm -f "$pmd"
+
 # --- Warn output marker and JSON severity ---
 echo ""
 echo "--- Severity in output ---"

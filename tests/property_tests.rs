@@ -536,14 +536,58 @@ fn coauthored_by_trailers_are_exempt() {
 
 #[test]
 fn prose_tells_are_advisory_warns() {
-    // The prose engine emits Warn matches only — never Flag — so a title or
-    // comment with a tell warns (exit 3) but never blocks a commit.
+    // Prose tells are advisory — never Flag — so a title or comment with a tell warns
+    // (locatable, exit 3) or notes (a non-locatable whole-document diagnosis, exit 0)
+    // but never blocks a commit.
     let mut m = Vec::new();
     scan_prose_text("Let's unpack this. We delve into the rich tapestry.", "stdin", &mut m);
     assert!(!m.is_empty(), "expected prose tells");
-    assert!(m.iter().all(|x| x.severity == Severity::Warn));
+    assert!(m.iter().all(|x| x.severity != Severity::Flag), "prose never blocks");
     assert!(m.iter().any(|x| x.term == "pedagogical-hook"));
     assert!(m.iter().all(|x| !x.cite.is_empty()), "prose tells carry a citation");
+}
+
+#[test]
+fn decoration_occurrences_map_to_distinct_lines_and_columns() {
+    // The headline plan/0031 fix: em-dashes on different lines report at their own
+    // line:col, not all collapsed onto the first occurrence's line (the call/0019 defect
+    // where ten dashes all reported at line 12).
+    let input = "Alpha — one.\nBeta line here all.\nGamma — two — three.\n";
+    let mut m = Vec::new();
+    scan_prose_text(input, "doc.md", &mut m);
+    let dec: Vec<_> = m.iter().filter(|x| x.term == "decoration").collect();
+    assert_eq!(dec.len(), 3, "three em-dashes → three records");
+    let lines: Vec<usize> = dec.iter().map(|x| x.line).collect();
+    assert!(lines.contains(&1) && lines.contains(&3), "on their real lines, got {lines:?}");
+    assert!(dec.iter().all(|x| x.col > 0), "each decoration carries a column");
+    let mut seen = std::collections::HashSet::new();
+    assert!(
+        dec.iter().all(|x| seen.insert((x.line, x.col))),
+        "distinct line:col per occurrence"
+    );
+}
+
+#[test]
+fn structural_diagnoses_are_advisory_notes() {
+    // A whole-document diagnosis (density, anaphora, a self-answered question) has no
+    // single editable span, so it is advisory (Note, exit 0) — outside the clean-to-zero
+    // gate — while locatable tropes stay Warn.
+    let input = "Let's unpack this. It's not a tweak, it's a revolution. We delve. \
+                 We leverage. We harness. The result? Pure synergy. Fast, clean, and robust.";
+    let mut m = Vec::new();
+    scan_prose_text(input, "stdin", &mut m);
+    assert!(
+        m.iter().any(|x| x.severity == Severity::Note),
+        "a structural diagnosis is advisory"
+    );
+    assert!(
+        m.iter().filter(|x| x.severity == Severity::Note).all(|x| x.col == 0),
+        "advisory diagnoses have no column"
+    );
+    assert!(
+        m.iter().any(|x| x.severity == Severity::Warn),
+        "locatable tropes still warn"
+    );
 }
 
 #[test]

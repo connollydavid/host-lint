@@ -43,11 +43,18 @@ pub enum Severity {
     Flag,
     /// A bare-numeral degenerate form: advisory, asks the author to reconsider (exit 3).
     Warn,
+    /// A non-locatable, whole-document prose diagnosis (density, anaphora, bullet
+    /// patterns): informational only, never gates (exit 0). There is no single span to
+    /// edit, so it sits outside the clean-to-zero bar.
+    Note,
 }
 
 pub struct Match {
     pub file: String,
     pub line: usize,
+    /// 1-based character column of the tell on its line; 0 when the tell is line-level
+    /// (a naming tell) or non-locatable (an advisory whole-document prose diagnosis).
+    pub col: usize,
     pub text: String,
     pub term: String,
     pub severity: Severity,
@@ -571,6 +578,7 @@ pub fn scan_text_with_allow_strict(
             matches.push(Match {
                 file: source.to_string(),
                 line: i + 1,
+                col: 0,
                 text: line.trim().to_string(),
                 term,
                 severity,
@@ -580,18 +588,59 @@ pub fn scan_text_with_allow_strict(
     }
 }
 
-// Best-effort line lookup: the 1-based line of `source` whose text contains the
-// start of `needle`; 1 when not found (titles and synthetic excerpts).
-fn locate_line(input: &str, needle: &str) -> usize {
-    let probe = needle.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
-    if probe.is_empty() {
-        return 1;
+// Push a prose tell as a Match — a free helper so the occurrence-mapping loop reads
+// cleanly.
+#[allow(clippy::too_many_arguments)]
+fn push_tell(
+    matches: &mut Vec<Match>,
+    source: &str,
+    line: usize,
+    col: usize,
+    text: &str,
+    term: &str,
+    severity: Severity,
+    cite: &str,
+) {
+    matches.push(Match {
+        file: source.to_string(),
+        line,
+        col,
+        text: text.to_string(),
+        term: term.to_string(),
+        severity,
+        cite: cite.to_string(),
+    });
+}
+
+// The 1-based (line, column) of byte offset `off` in `input`; the column counts
+// characters from the line start.
+fn line_col(input: &str, off: usize) -> (usize, usize) {
+    let mut line = 1usize;
+    let mut col = 1usize;
+    for (i, ch) in input.char_indices() {
+        if i >= off {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
     }
-    input
-        .lines()
-        .position(|l| l.contains(&probe))
-        .map(|i| i + 1)
-        .unwrap_or(1)
+    (line, col)
+}
+
+// Best-effort line of a multi-word excerpt the markdown extractor may have normalised
+// out of the raw source: the 1-based line containing the excerpt's first few words, or
+// None when even that is absent (a synthetic whole-document diagnosis). Both arguments
+// are already ascii-lowercased, so the match is case-insensitive.
+fn probe_line(input_lc: &str, needle_lc: &str) -> Option<usize> {
+    let probe = needle_lc.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+    if probe.is_empty() {
+        return None;
+    }
+    input_lc.lines().position(|l| l.contains(&probe)).map(|i| i + 1)
 }
 
 /// Scan `input` as prose for agentic tells (the host-grammar engine), pushing
@@ -607,15 +656,47 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     } else {
         host_grammar::scan_prose_parallel(input)
     };
-    for t in tells {
-        matches.push(Match {
-            file: source.to_string(),
-            line: locate_line(input, &t.excerpt),
-            text: t.excerpt,
-            term: t.id.to_string(),
-            severity: Severity::Warn,
-            cite: t.cite.to_string(),
-        });
+    // Locate each tell. The engine emits one tell per occurrence, but in the markdown
+    // path tells of the same (id, excerpt) arrive grouped, and a first-occurrence line
+    // lookup collapses them all onto one line (ten em-dashes → ten records at line 12).
+    // Occurrence-map instead: assign the k-th tell of an (id, excerpt) to the k-th
+    // literal occurrence of its excerpt, yielding a precise line:col. A multi-word
+    // excerpt the markdown extractor normalised away falls back to a probe line (no
+    // column); one that never appears at all is a non-locatable whole-document
+    // diagnosis — advisory, emitted once.
+    let input_lc = input.to_ascii_lowercase();
+    let mut cursor: std::collections::HashMap<(&str, &str), usize> =
+        std::collections::HashMap::new();
+    for t in &tells {
+        // Match case-insensitively: the engine returns lowercased lexeme phrases, but a
+        // sentence-initial tell ("Let's unpack") is capitalised in the source. Ascii
+        // lowercasing is byte-length-preserving, so an offset in `input_lc` is valid in
+        // `input`, and the original-case substring is what the author actually wrote.
+        let needle = t.excerpt.to_ascii_lowercase();
+        let key = (t.id, t.excerpt.as_str());
+        let from = *cursor.get(&key).unwrap_or(&0);
+        if let Some(rel) = input_lc.get(from..).and_then(|s| s.find(&needle)) {
+            let off = from + rel;
+            let end = off + needle.len();
+            cursor.insert(key, end.max(off + 1));
+            let (line, col) = line_col(input, off);
+            push_tell(matches, source, line, col, &input[off..end], t.id, Severity::Warn, t.cite);
+        } else if from == 0 {
+            // No literal occurrence from the start: a normalised multi-word excerpt (try
+            // a probe line) or a synthetic diagnosis (advisory). Mark seen so any repeats
+            // are dropped, not re-emitted.
+            cursor.insert(key, usize::MAX);
+            match probe_line(&input_lc, &needle) {
+                Some(line) => {
+                    push_tell(matches, source, line, 0, &t.excerpt, t.id, Severity::Warn, t.cite)
+                }
+                None => {
+                    push_tell(matches, source, 1, 0, &t.excerpt, t.id, Severity::Note, t.cite)
+                }
+            }
+        }
+        // else: cursor advanced past the real occurrences but no more found → a phantom
+        // surplus or an already-emitted repeat → drop.
     }
     let score = if markdown {
         host_grammar::tell_score_markdown(input)
@@ -626,12 +707,13 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
         matches.push(Match {
             file: source.to_string(),
             line: 1,
+            col: 0,
             text: format!(
                 "agentic-tell density {:.2} across {} sentences ({} tells)",
                 score.density, score.sentences, score.tells
             ),
             term: "tell-density".to_string(),
-            severity: Severity::Warn,
+            severity: Severity::Note,
             cite: "tropes.fyi: many devices together".to_string(),
         });
     }

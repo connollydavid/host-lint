@@ -269,15 +269,39 @@ fn scan_file(path: &Path, allow: &[String], strict: bool, matches: &mut Vec<Matc
 
 fn output_text(matches: &[Match]) {
     for m in matches {
+        let loc = if m.col > 0 {
+            format!("{}:{}:{}", m.file, m.line, m.col)
+        } else {
+            format!("{}:{}", m.file, m.line)
+        };
         let tag = if m.cite.is_empty() {
             m.term.clone()
         } else {
             format!("{} — {}", m.term, m.cite)
         };
+        let fix = fix_hint(&m.term, &m.text)
+            .map(|f| format!(" [fix: {}]", f))
+            .unwrap_or_default();
         match m.severity {
-            Severity::Warn => eprintln!("{}:{}: warning: {} ({})", m.file, m.line, m.text, tag),
-            Severity::Flag => eprintln!("{}:{}: {} ({})", m.file, m.line, m.text, tag),
+            Severity::Warn => eprintln!("{}: warning: {} ({}){}", loc, m.text, tag, fix),
+            Severity::Flag => eprintln!("{}: {} ({}){}", loc, m.text, tag, fix),
+            Severity::Note => eprintln!("{}: note: {} ({})", loc, m.text, tag),
         }
+    }
+}
+
+// A mechanical rewrite hint for the tropes a weak agent can fix by a known edit, keyed
+// on the tell id (and the matched character for decoration). Judgement tropes — reword
+// a sentence — carry no hint, so only mechanically-fixable tells get one.
+fn fix_hint(term: &str, text: &str) -> Option<&'static str> {
+    match term {
+        "decoration" => Some(match text {
+            "—" | "–" => "replace with a comma, period, or parentheses",
+            "“" | "”" | "‘" | "’" => "use a straight quote",
+            "→" => "replace with a word (to, then, leads to)",
+            _ => "rewrite as plain punctuation",
+        }),
+        _ => None,
     }
 }
 
@@ -292,13 +316,18 @@ fn serde_json_like(matches: &[Match]) -> String {
         out.push_str("  {");
         out.push_str(&format!("\"file\": \"{}\", ", escape_json(&m.file)));
         out.push_str(&format!("\"line\": {}, ", m.line));
+        out.push_str(&format!("\"col\": {}, ", m.col));
         out.push_str(&format!("\"text\": \"{}\", ", escape_json(&m.text)));
         out.push_str(&format!("\"term\": \"{}\", ", escape_json(&m.term)));
         let severity = match m.severity {
             Severity::Warn => "warn",
             Severity::Flag => "flag",
+            Severity::Note => "note",
         };
         out.push_str(&format!("\"severity\": \"{}\"", severity));
+        if let Some(f) = fix_hint(&m.term, &m.text) {
+            out.push_str(&format!(", \"fix\": \"{}\"", escape_json(f)));
+        }
         if !m.cite.is_empty() {
             out.push_str(&format!(", \"cite\": \"{}\"", escape_json(&m.cite)));
         }
@@ -379,6 +408,57 @@ fn load_ignore(root: &str) -> Vec<String> {
     }
 }
 
+// `--docs` is the repo-wide prose lane — the counterpart to the naming `--all`.
+// Scope determines type: naming tells hide in any file, but prose tropes are a
+// property of authored narrative, so `--docs` walks `.md` only and never runs the
+// prose engine over `.rs`/`.toml`/`.sh` (which would flag decoration in code
+// comments and string literals, with a meaningless clean-to-zero bar over source).
+// It reuses the `--all` `git ls-files` walk, so gitignored output, vendored deps,
+// untracked worktrees, and submodules never appear; `.host-lintignore` filters the
+// rest (e.g. the append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3),
+// as elsewhere; the `verify` gate's recheck treats that non-zero as a regression.
+fn run_docs(root: &str, ignore: &[String], matches: &mut Vec<Match>) {
+    if root.is_empty() {
+        return;
+    }
+    let output = match process::Command::new("git")
+        .args(["-C", root, "ls-files", "-z"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "host-lint: --docs needs a git repository (git ls-files failed: {})",
+                String::from_utf8_lossy(&o.stderr).trim()
+            );
+            process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("host-lint: --docs needs git on PATH: {e}");
+            process::exit(2);
+        }
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    for rel in text.split('\0').filter(|s| !s.is_empty()) {
+        if !rel.to_ascii_lowercase().ends_with(".md") {
+            continue;
+        }
+        if path_ignored(rel, ignore) {
+            continue;
+        }
+        let path = Path::new(root).join(rel);
+        if fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        if let Ok(content) = fs::read_to_string(&path) {
+            scan_prose_text(&content, rel, matches);
+        }
+    }
+}
+
 fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
@@ -422,6 +502,7 @@ fn main() {
     let mut all_flag = false;
     let mut log_flag = false;
     let mut prose_flag = false;
+    let mut docs_flag = false;
     let mut files: Vec<String> = Vec::new();
 
     for arg in &args[1..] {
@@ -431,6 +512,7 @@ fn main() {
             "--all" => all_flag = true,
             "--log" => log_flag = true,
             "--prose" => prose_flag = true,
+            "--docs" => docs_flag = true,
             _ => files.push(arg.clone()),
         }
     }
@@ -459,10 +541,12 @@ fn main() {
         }
     } else if all_flag {
         run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
+    } else if docs_flag {
+        run_docs(&root, &load_ignore(&root), &mut matches);
     } else if log_flag {
         run_log(allow, strict, &mut matches);
     } else if files.is_empty() {
-        eprintln!("Usage: host-lint [--stdin] [--prose] [--json] [--all] [--log] [files...]");
+        eprintln!("Usage: host-lint [--stdin] [--prose] [--docs] [--json] [--all] [--log] [files...]");
         process::exit(2);
     } else {
         // Honor `.host-lintignore` for explicit file args too — the git hook scans
