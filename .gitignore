@@ -1,2 +1,4 @@
 /target/
 host-lint
+/vendor/
+/vendor-config.toml
