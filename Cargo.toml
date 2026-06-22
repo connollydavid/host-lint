@@ -6,7 +6,7 @@ description = "Detect phase-synonym agentic tells in commits, headers, and comme
 license = "Unlicense"
 
 [dependencies]
-host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "8091261" }
+host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "9d51468ab1f0a7e253cd2ee7d149d7325e65f47b" }
 
 # `cargo kani` sets cfg(kani) for the #[cfg(kani)] proof harnesses in src/lib.rs.
 # Declare it a known cfg so the normal build doesn't warn. Lints don't affect
