@@ -6,7 +6,9 @@ env:
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    # semver release tags only — a bare `v*` also matches the `vendor-vN` bundle
+    # tags this repo publishes, which would fire the release job on a bundle tag.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   pull_request:
     branches: [main]
 
