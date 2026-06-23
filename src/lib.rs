@@ -3,6 +3,12 @@ const FLAG_TERMS: &[&str] = &[
     "sprint", "cycle", "increment", "wave", "batch", "section",
     "period", "era", "epoch", "chapter", "episode", "instalment",
     "leg", "lap", "level",
+    // Positional references to a milestone checklist item (host#16): the
+    // "box N" / "boxes N-M" / "steps N-M" shape, the same ordinal-by-position
+    // tell aimed at the "[ ]"/"[x]" marks. Plurals are listed explicitly
+    // because the scan matches a whole whitespace token; "step" is already
+    // above.
+    "box", "boxes", "steps",
 ];
 
 const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
@@ -94,6 +100,21 @@ pub fn is_review_code(word: &str) -> bool {
     }
 }
 
+// A numeric range ("4-8"): two non-empty all-digit parts joined by a single
+// hyphen. A positional reference often spans a contiguous span of checklist
+// items (a range like "4-8"), which `is_numeral` does not accept.
+fn is_num_range(word: &str) -> bool {
+    match word.split_once('-') {
+        Some((a, b)) => {
+            !a.is_empty()
+                && !b.is_empty()
+                && a.bytes().all(|c| c.is_ascii_digit())
+                && b.bytes().all(|c| c.is_ascii_digit())
+        }
+        None => false,
+    }
+}
+
 pub fn check_line(line: &str) -> Option<String> {
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -101,16 +122,21 @@ pub fn check_line(line: &str) -> Option<String> {
     for (i, word) in words.iter().enumerate() {
         let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
         if FLAG_TERMS.contains(&clean) {
+            // A numeral OR a numeric range (a span like "4-8") within two words
+            // marks the positional reference. The glued form (the noun joined to
+            // a numeral by a hyphen) is out of scope: a legitimate glued term has
+            // no numeral-free LEXICON prefix to declare, so it could not be
+            // escaped, and it is the same class as a noun-glued numeral.
             if let Some(next) = words.get(i + 1) {
                 let next_clean = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                if is_numeral(next_clean) {
+                if is_numeral(next_clean) || is_num_range(next_clean) {
                     let orig_word = words[i].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
                     return Some(orig_word.to_string());
                 }
             }
             if let Some(next2) = words.get(i + 2) {
                 let next_clean = next2.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                if is_numeral(next_clean) {
+                if is_numeral(next_clean) || is_num_range(next_clean) {
                     let orig_word = words[i].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
                     return Some(orig_word.to_string());
                 }

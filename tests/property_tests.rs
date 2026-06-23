@@ -7,6 +7,37 @@ use host_lint::{
 };
 use proptest::prelude::*;
 
+// host#16: a positional reference to a milestone checklist item (box/boxes/steps
+// + a numeral, a range, or a glued hyphen-digit form) is the ordinal-by-position
+// tell and flags.
+#[test]
+fn positional_checklist_references_flag() {
+    for line in [
+        "plan/0001: box 7 [x]",
+        "boxes 4-8 blocked",
+        "box 3 root cause localized",
+        "plan steps 3-5 updated",
+        "step 3-5 closed",
+    ] {
+        assert!(check_line(line).is_some(), "should flag: {line}");
+    }
+}
+
+// host#16 boundaries: the literal checklist mark, the disposition verb, and a
+// content-named reference carry no noun-plus-numeral, so they stay clean.
+#[test]
+fn checklist_mark_verb_and_content_name_stay_clean() {
+    for line in [
+        "- [x] deploy path landed",
+        "1. [x] native MSVC build verified",
+        "box an irreducible citation in a fence",
+        "the deploy-path box landed",
+        "what is in the box",
+    ] {
+        assert!(check_line(line).is_none(), "should be clean: {line}");
+    }
+}
+
 proptest! {
     #[test]
     fn flag_term_followed_by_arabic_numeral_is_detected(

@@ -38,6 +38,13 @@ echo "addresses finding #7" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses 
 echo "blocker B2 resolved" | $BINARY --stdin >/dev/null 2>&1 && bad "blocker B2 resolved" || ok "blocker B2 resolved"
 echo "addresses review (B1)" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses review (B1)" || ok "addresses review (B1)"
 
+# Positional checklist-item references (host#16): box/boxes/steps + numeral, range, glued
+echo "plan/0001: box 7 [x] (deploy path landed)" | $BINARY --stdin >/dev/null 2>&1 && bad "box 7" || ok "box 7"
+echo "plan/0001 boxes 4-8 blocked" | $BINARY --stdin >/dev/null 2>&1 && bad "boxes 4-8" || ok "boxes 4-8"
+echo "box 3 root cause localized" | $BINARY --stdin >/dev/null 2>&1 && bad "box 3" || ok "box 3"
+echo "plan steps 3-5 updated" | $BINARY --stdin >/dev/null 2>&1 && bad "steps 3-5" || ok "steps 3-5"
+echo "step 3-5 closed" | $BINARY --stdin >/dev/null 2>&1 && bad "step 3-5 (range)" || ok "step 3-5 (range)"
+
 # --- Must not match (expect exit 0) ---
 echo ""
 echo "--- Must not match (expect clean) ---"
@@ -51,6 +58,14 @@ echo "WIP: draft, do not merge" | $BINARY --stdin >/dev/null 2>&1 && ok "WIP: dr
 echo "// FIXME: race condition on shutdown" | $BINARY --stdin >/dev/null 2>&1 && ok "// FIXME: race condition" || bad "// FIXME: race condition"
 echo "increment the retry counter" | $BINARY --stdin >/dev/null 2>&1 && ok "increment the retry counter" || bad "increment the retry counter"
 echo "the first pass over the array" | $BINARY --stdin >/dev/null 2>&1 && ok "the first pass over the array" || bad "the first pass over the array"
+
+# host#16 boundaries: the literal checklist mark, the disposition verb, and a
+# content-named reference all stay clean (only the positional citation flags).
+echo "- [x] deploy path landed" | $BINARY --stdin >/dev/null 2>&1 && ok "- [x] literal mark" || bad "- [x] literal mark"
+echo "1. [x] native MSVC build verified" | $BINARY --stdin >/dev/null 2>&1 && ok "1. [x] ordered mark" || bad "1. [x] ordered mark"
+echo "box an irreducible citation in a fence" | $BINARY --stdin >/dev/null 2>&1 && ok "box (verb)" || bad "box (verb)"
+echo "the deploy-path box landed" | $BINARY --stdin >/dev/null 2>&1 && ok "content-named box" || bad "content-named box"
+echo "what is in the box" | $BINARY --stdin >/dev/null 2>&1 && ok "box (no numeral)" || bad "box (no numeral)"
 
 # Additional must-not-match cases
 echo "LGTM" | $BINARY --stdin >/dev/null 2>&1 && ok "LGTM" || bad "LGTM"

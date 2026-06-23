@@ -45,6 +45,33 @@ True synonyms for "phase" as an ordered, numberable span. Flag when one appears 
 | Leg / Lap | general | a leg or lap of a longer effort; rare in code |
 | Level | games, general | sometimes a stage ("level 1"), often a hierarchy degree instead |
 
+### 1a. Positional references to a milestone checklist item (host#16)
+
+A milestone's state marks (the checklist boxes) get cited by their list position, the
+same ordinal-by-position tell as a numbered name, aimed at a checklist rather than a
+milestone title. The position is load-bearing in the reference, so it rots when the plan
+is re-cut. The matched shapes, with the legitimate quantities that need declaring rather
+than flagging:
+
+```host-lint:ignore
+box 7        boxes 4-8        steps 3-5        step 3-5
+decode step 2 (a genuine quantity, declared in the LEXICON, not flagged)
+```
+
+`box`, `boxes`, and `steps` join the flag list, and a numeral or a numeric range (`N-M`)
+after the noun flags. These boundaries stay clean: the literal checklist mark (`- [ ]`,
+`1. [x]`) carries no noun-plus-numeral; a content-named reference ("the deploy-path box")
+names the item by its content; and the disposition verb "box" ("box an irreducible
+citation") has no trailing numeral.
+
+When a same-shaped token is a genuine quantity rather than a position, declare it in the
+`LEXICON`. Declare the numeral-free contextual prefix (for the decode example, the phrase
+without its number): the numbered phrase is itself a flag-tier tell, so the allowlist
+guard refuses it by design, because the allowlist legitimizes vocabulary and does not
+silence a real tell. The glued hyphen-digit form (the number joined to the noun inside
+one token) stays out of scope: a legitimate glued term has no numeral-free prefix to
+declare, so it could not be escaped through the allowlist.
+
 ## 2. Allowlist: idiomatic git and review vocabulary (do not flag)
 
 These carry defined meaning in established conventions. None denotes a phase. They classify a change, a review remark, or an in-source annotation.
