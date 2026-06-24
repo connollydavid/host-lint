@@ -35,6 +35,16 @@ const UNITS: &[&str] = &[
     "gb", "mb", "kb", "tb",
 ];
 
+// `gather` (discovery): common words that legitimately precede a numeral and are
+// not position labels ("in 2024", "see 3", "line 42"). Kept small; the gather is
+// recall-biased and the operator triages the residue.
+const GATHER_STOP: &[&str] = &[
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "by", "from", "with",
+    "and", "or", "is", "are", "was", "were", "be", "as", "it", "this", "that",
+    "about", "over", "under", "up", "all", "see", "line", "lines", "item",
+    "items", "issue", "issues", "commit", "rev", "port", "row", "col", "len",
+];
+
 const CI_PATTERNS: &[&str] = &[
     ".github/workflows",
     ".gitlab-ci",
@@ -810,6 +820,76 @@ fn seg_glob(pat: &[u8], s: &[u8]) -> bool {
 
 pub fn is_scannable(ext: &str) -> bool {
     matches!(ext, "" | "md" | "txt" | "rst" | "py" | "rs" | "js" | "ts" | "jsx" | "tsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp" | "rb" | "sh" | "yaml" | "yml" | "toml" | "json" | "xml" | "html" | "css" | "sql" | "r" | "lua" | "swift" | "kt" | "scala" | "ex" | "exs" | "clj" | "hs" | "ml" | "vim" | "ps1" | "bat" | "cmake" | "makefile")
+}
+
+/// A candidate emergent tell surfaced by `gather`: a word recurring in the tell
+/// shape (a word then a numeral) that the lane does not yet catch.
+pub struct Candidate {
+    pub word: String,
+    pub count: usize,
+    pub examples: Vec<String>,
+}
+
+/// Scan a corpus (commit subjects, markdown headers) for candidate emergent
+/// tells. A candidate is a word in the word-then-numeral shape that is not
+/// already a flag term, a warn noun, a known-legitimate context, or a stop
+/// word, and whose numeral is neither a four-digit year nor a unit-bearing
+/// quantity. Returns candidates recurring at least `min_count` times, ranked by
+/// count then name. This is the inverse of the flag scan: the residue the
+/// grammar misses, for the operator to triage (propose, declare, or leave).
+pub fn gather_candidates(lines: &[String], min_count: usize) -> Vec<Candidate> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, (usize, Vec<String>)> = HashMap::new();
+    for line in lines {
+        let lower = line.to_lowercase();
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        for (i, word) in words.iter().enumerate() {
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+            if clean.len() < 3 || !clean.bytes().all(|b| b.is_ascii_alphabetic()) {
+                continue;
+            }
+            if FLAG_TERMS.contains(&clean)
+                || WARN_NOUNS.contains(&clean)
+                || PREV_SKIP.contains(&clean)
+                || GATHER_STOP.contains(&clean)
+            {
+                continue;
+            }
+            let Some(next) = words.get(i + 1) else { continue };
+            // a "#7" issue or PR reference is not an ordinal label
+            if next.starts_with('#') {
+                continue;
+            }
+            let nc = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+            if !(is_numeral(nc) || is_num_range(nc)) {
+                continue;
+            }
+            // four or more digits read as a year, a hash, or a quantity, not the
+            // small ordinal a positional label uses
+            if nc.len() >= 4 && nc.bytes().all(|b| b.is_ascii_digit()) {
+                continue;
+            }
+            // a word then a number then a unit is a quantity, not a position
+            if let Some(after) = words.get(i + 2) {
+                let ac = after.trim_matches(|c: char| !c.is_alphanumeric());
+                if UNITS.contains(&ac) {
+                    continue;
+                }
+            }
+            let entry = seen.entry(clean.to_string()).or_insert((0, Vec::new()));
+            entry.0 += 1;
+            if entry.1.len() < 3 {
+                entry.1.push(line.trim().to_string());
+            }
+        }
+    }
+    let mut out: Vec<Candidate> = seen
+        .into_iter()
+        .filter(|(_, (count, _))| *count >= min_count)
+        .map(|(word, (count, examples))| Candidate { word, count, examples })
+        .collect();
+    out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.word.cmp(&b.word)));
+    out
 }
 
 // Kani proof harnesses (the host-prove `kani-conformance` lane). `#[cfg(kani)]`

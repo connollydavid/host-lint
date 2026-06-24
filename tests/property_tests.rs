@@ -1,6 +1,6 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
-    check_warn, classify_line,
+    check_warn, classify_line, gather_candidates,
     escalate_subject_decoration, is_numeral, is_strict_directive, parse_jira_keys,
     parse_lexicon_line, path_ignored, scan_prose_text, scan_text, scan_text_with_allow,
     scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
@@ -36,6 +36,34 @@ fn checklist_mark_verb_and_content_name_stay_clean() {
     ] {
         assert!(check_line(line).is_none(), "should be clean: {line}");
     }
+}
+
+// plan/0035: `gather` surfaces a recurring word-then-numeral shape the lane does
+// not catch, and skips flag terms, legitimate contexts, quantities, years, and
+// one-offs.
+#[test]
+fn gather_surfaces_recurring_novel_shape_and_skips_noise() {
+    let lines: Vec<String> = [
+        "plan/0001: widget 7 done",
+        "widget 3 root cause localized",
+        "phase 2 of auth refactor",
+        "see figure 3 for details",
+        "wait 5 seconds for the retry",
+        "released in 2024 at last",
+        "gizmo 9 one-off only",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let words: Vec<String> = gather_candidates(&lines, 2)
+        .into_iter()
+        .map(|c| c.word)
+        .collect();
+    assert!(words.iter().any(|w| w == "widget"), "widget recurs + is novel: {words:?}");
+    assert!(!words.iter().any(|w| w == "phase"), "phase is already a flag term");
+    assert!(!words.iter().any(|w| w == "figure"), "figure is a legitimate context");
+    assert!(!words.iter().any(|w| w == "wait"), "a unit-bearing quantity is not a position");
+    assert!(!words.iter().any(|w| w == "gizmo"), "gizmo is a one-off below the threshold");
 }
 
 proptest! {

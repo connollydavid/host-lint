@@ -489,12 +489,73 @@ fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
     }
 }
 
+// `gather` (the reflective-practice discovery, plan/0035): scan commit subjects
+// and markdown headers for a recurring word-then-numeral shape the lane does not
+// catch, and report the candidates for the operator to triage. Advisory: it
+// surfaces, it never decides, and it exits zero.
+fn run_gather(root: &str) -> ! {
+    let mut lines: Vec<String> = Vec::new();
+    // commit subjects — the richest source of an ordinal-by-position tell
+    if let Ok(o) = process::Command::new("git")
+        .args(["-C", root, "log", "--format=%s"])
+        .output()
+    {
+        if o.status.success() {
+            for l in String::from_utf8_lossy(&o.stdout).lines() {
+                lines.push(l.to_string());
+            }
+        }
+    }
+    // header lines from tracked markdown docs
+    if let Ok(o) = process::Command::new("git")
+        .args(["-C", root, "ls-files", "-z"])
+        .output()
+    {
+        if o.status.success() {
+            for rel in String::from_utf8_lossy(&o.stdout)
+                .split('\0')
+                .filter(|s| s.ends_with(".md"))
+            {
+                if let Ok(content) = fs::read_to_string(Path::new(root).join(rel)) {
+                    for l in content.lines() {
+                        if l.trim_start().starts_with('#') {
+                            lines.push(l.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let candidates = host_lint::gather_candidates(&lines, 2);
+    if candidates.is_empty() {
+        println!("gather: no recurring candidate tells — the lane covers this corpus");
+        process::exit(0);
+    }
+    println!(
+        "gather: {} candidate tell-shape(s) recurring in commit subjects and headers",
+        candidates.len()
+    );
+    println!("(advisory — triage each: propose it upstream, declare it in the LEXICON, or leave it)");
+    for c in &candidates {
+        println!("  {:>3}x  {}", c.count, c.word);
+        for ex in &c.examples {
+            println!("         e.g. {ex}");
+        }
+    }
+    process::exit(0);
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     // `lexicon` is a subcommand (CRUD over the allowlist), not a scan flag.
     if args.get(1).map(String::as_str) == Some("lexicon") {
         run_lexicon(&repo_root(), &args[2..]);
+    }
+
+    // `gather` is a discovery subcommand (plan/0035), not a scan flag.
+    if args.get(1).map(String::as_str) == Some("gather") {
+        run_gather(&repo_root());
     }
 
     let mut stdin_flag = false;
