@@ -552,6 +552,39 @@ fn empty_allow_list_is_unchanged_behaviour() {
     assert_eq!(with_empty.len(), 1);
 }
 
+// --- Prose lane consults the LEXICON (issue #16) ---
+
+// A helper: scan text as prose under an allow-list, return the matches.
+fn prose_one(input: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match> {
+    let allow_lc: Vec<String> = allow.iter().map(|s| s.to_ascii_lowercase()).collect();
+    let mut m = Vec::new();
+    scan_prose_text(input, source, &allow_lc, &mut m);
+    m
+}
+
+#[test]
+fn prose_lexicon_masks_a_trope_within_a_declared_phrase() {
+    // `harness` is an ai-diction prose trope; a project that legitimately runs a
+    // `rehost harness` declares the phrase, and the prose lane masks the trope
+    // within it, the same pre-detection blank-out the naming lane already performs.
+    let line = "The rehost harness logs to disk; a second harness runs nightly.";
+    let undeclared = prose_one(line, "doc.md", &[]);
+    assert_eq!(undeclared.len(), 2, "both harness occurrences flag with no LEXICON");
+    let masked = prose_one(line, "doc.md", &["rehost harness"]);
+    assert_eq!(masked.len(), 1, "the occurrence inside the declared phrase is cleared");
+    // The surviving flag is the standalone `harness`, not the one inside the phrase:
+    // it sits at the second occurrence's column (surgical at the word boundary).
+    assert_eq!(masked[0].col, undeclared[1].col);
+}
+
+#[test]
+fn prose_empty_or_irrelevant_allow_leaves_all_flags() {
+    let line = "The rehost harness logs to disk; a second harness runs nightly.";
+    assert_eq!(prose_one(line, "doc.md", &[]).len(), 2, "no LEXICON masks nothing");
+    // An entry that does not occur in the text masks nothing (unchanged behaviour).
+    assert_eq!(prose_one(line, "doc.md", &["windows 3.1"]).len(), 2);
+}
+
 // --- Path ignore (.host-lintignore) ---
 
 #[test]
@@ -599,7 +632,7 @@ fn prose_tells_are_advisory_warns() {
     // (locatable, exit 3) or notes (a non-locatable whole-document diagnosis, exit 0)
     // but never blocks a commit.
     let mut m = Vec::new();
-    scan_prose_text("Let's unpack this. We delve into the rich tapestry.", "stdin", &mut m);
+    scan_prose_text("Let's unpack this. We delve into the rich tapestry.", "stdin", &[], &mut m);
     assert!(!m.is_empty(), "expected prose tells");
     assert!(m.iter().all(|x| x.severity != Severity::Flag), "prose never blocks");
     assert!(m.iter().any(|x| x.term == "pedagogical-hook"));
@@ -613,7 +646,7 @@ fn decoration_occurrences_map_to_distinct_lines_and_columns() {
     // where ten dashes all reported at line 12).
     let input = "Alpha — one.\nBeta line here all.\nGamma — two — three.\n";
     let mut m = Vec::new();
-    scan_prose_text(input, "doc.md", &mut m);
+    scan_prose_text(input, "doc.md", &[], &mut m);
     let dec: Vec<_> = m.iter().filter(|x| x.term == "decoration").collect();
     assert_eq!(dec.len(), 3, "three em-dashes → three records");
     let lines: Vec<usize> = dec.iter().map(|x| x.line).collect();
@@ -634,7 +667,7 @@ fn structural_diagnoses_are_advisory_notes() {
     let input = "Let's unpack this. It's not a tweak, it's a revolution. We delve. \
                  We leverage. We harness. The result? Pure synergy. Fast, clean, and robust.";
     let mut m = Vec::new();
-    scan_prose_text(input, "stdin", &mut m);
+    scan_prose_text(input, "stdin", &[], &mut m);
     assert!(
         m.iter().any(|x| x.severity == Severity::Note),
         "a structural diagnosis is advisory"
@@ -654,7 +687,7 @@ fn subject_decoration_escalates_to_flag() {
     // A decoration tell on the commit subject (first line) / a gh title blocks.
     let input = "classify: refuse adoption — print the case";
     let mut m = Vec::new();
-    scan_prose_text(input, "stdin", &mut m);
+    scan_prose_text(input, "stdin", &[], &mut m);
     escalate_subject_decoration(input.lines().next().unwrap(), &mut m);
     assert!(m.iter().any(|x| x.term == "decoration" && x.severity == Severity::Flag));
 }
@@ -664,7 +697,7 @@ fn body_decoration_stays_advisory() {
     // Decoration confined to the body keeps its Warn — only the subject blocks.
     let input = "classify: refuse adoption to print the case\n\nIt prints the case — unless the target is software.";
     let mut m = Vec::new();
-    scan_prose_text(input, "stdin", &mut m);
+    scan_prose_text(input, "stdin", &[], &mut m);
     escalate_subject_decoration(input.lines().next().unwrap(), &mut m);
     assert!(m.iter().any(|x| x.term == "decoration"), "expected a body decoration tell");
     assert!(m.iter().filter(|x| x.term == "decoration").all(|x| x.severity == Severity::Warn));
@@ -678,6 +711,7 @@ fn clean_prose_emits_no_tells() {
         "The parser reads each line and reports the first tell it finds. \
          A missing allow-list file means no phrases are masked.",
         "stdin",
+        &[],
         &mut m,
     );
     assert!(m.is_empty(), "clean prose tripped: {:?}", m.iter().map(|x| &x.term).collect::<Vec<_>>());
@@ -690,6 +724,7 @@ fn dense_prose_crosses_the_density_gate() {
         "Let's unpack this. It's not a tweak, it's a revolution. We delve. \
          We leverage. We harness. The result? Pure synergy. Fast, clean, and robust.",
         "stdin",
+        &[],
         &mut m,
     );
     assert!(m.iter().any(|x| x.term == "tell-density"), "expected the density summary");

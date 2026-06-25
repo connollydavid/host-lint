@@ -214,6 +214,22 @@ printf 'It'"'"'s not a tweak, it'"'"'s a revolution, we delve.' | $BINARY --stdi
 [ "$rc" -eq 3 ] && ok "same text as plain prose warns" || bad "plain prose warns (rc=$rc)"
 rm -f "$md"
 
+# --- issue #16: the prose lane consults the LEXICON ---
+echo ""
+echo "--- prose LEXICON (issue #16) ---"
+plx=$(mktemp -d)
+printf 'The rehost harness logs to disk; a second harness runs nightly.\n' > "$plx/doc.md"
+# No LEXICON: both harness occurrences flag as ai-diction (exit 3).
+out=$(cd "$plx" && "$BINARY_ABS" --prose doc.md 2>&1) && rc=0 || rc=$?
+n=$(printf '%s\n' "$out" | grep -c 'harness')
+{ [ "$rc" -eq 3 ] && [ "$n" -eq 2 ]; } && ok "prose: harness flags twice with no LEXICON" || bad "prose no-LEXICON (rc=$rc n=$n)"
+# Declare the phrase: the occurrence inside it is masked, the standalone still flags.
+printf 'rehost harness\n' > "$plx/LEXICON"
+out=$(cd "$plx" && "$BINARY_ABS" --prose doc.md 2>&1) && rc=0 || rc=$?
+n=$(printf '%s\n' "$out" | grep -c 'harness')
+{ [ "$rc" -eq 3 ] && [ "$n" -eq 1 ]; } && ok "prose: declared phrase masked, standalone still flags" || bad "prose LEXICON mask (rc=$rc n=$n)"
+rm -rf "$plx"
+
 # --- --docs: repo-wide prose lane (markdown only, honors .host-lintignore) ---
 echo ""
 echo "--- --docs (repo-wide prose) ---"

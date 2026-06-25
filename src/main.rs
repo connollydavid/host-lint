@@ -417,7 +417,7 @@ fn load_ignore(root: &str) -> Vec<String> {
 // untracked worktrees, and submodules never appear; `.host-lintignore` filters the
 // rest (e.g. the append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3),
 // as elsewhere; the `verify` gate's recheck treats that non-zero as a regression.
-fn run_docs(root: &str, ignore: &[String], matches: &mut Vec<Match>) {
+fn run_docs(root: &str, allow: &[String], ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         return;
     }
@@ -454,7 +454,7 @@ fn run_docs(root: &str, ignore: &[String], matches: &mut Vec<Match>) {
             continue;
         }
         if let Ok(content) = fs::read_to_string(&path) {
-            scan_prose_text(&content, rel, matches);
+            scan_prose_text(&content, rel, allow, matches);
         }
     }
 }
@@ -589,7 +589,7 @@ fn main() {
         io::stdin().read_to_string(&mut input).unwrap_or_default();
         // A stdin title/draft gets both naming and prose tells.
         scan_text_with_allow_strict(&input, "stdin", allow, strict, &mut matches);
-        scan_prose_text(&input, "stdin", &mut matches);
+        scan_prose_text(&input, "stdin", allow, &mut matches);
         // The subject (first line) becomes a squash-merge subject / gh title; a
         // decoration tell there blocks rather than warns. The body stays advisory.
         escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
@@ -597,13 +597,13 @@ fn main() {
         // Treat each file purely as prose for the agentic-tell engine.
         for f in &files {
             if let Ok(content) = fs::read_to_string(f) {
-                scan_prose_text(&content, f, &mut matches);
+                scan_prose_text(&content, f, allow, &mut matches);
             }
         }
     } else if all_flag {
         run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
     } else if docs_flag {
-        run_docs(&root, &load_ignore(&root), &mut matches);
+        run_docs(&root, allow, &load_ignore(&root), &mut matches);
     } else if log_flag {
         run_log(allow, strict, &mut matches);
     } else if files.is_empty() {

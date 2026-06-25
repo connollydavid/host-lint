@@ -683,14 +683,23 @@ fn probe_line(input_lc: &str, needle_lc: &str) -> Option<usize> {
 /// each as an advisory `Warn` match, plus one document-level match when the tell
 /// density crosses the threshold. Used for titles, comments, and `--prose` docs;
 /// never blocks (Warn = exit 3), so a flagged draft still lands.
-pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
+pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: &mut Vec<Match>) {
     // A markdown source is scanned structurally (code blocks excluded, headings
     // not counted as paragraphs); anything else as plain prose.
     let markdown = source.to_lowercase().ends_with(".md");
+    // Mask the sanctioned LEXICON phrases before the density engine sees them, the
+    // same pre-detection blank-out the naming lane performs (issue #16): a declared
+    // domain phrase like `rehost harness` clears the trope on `harness` within that
+    // phrase, while a standalone occurrence still flags. `mask_allowed` is
+    // byte-length-preserving, so an offset into `masked` indexes `input` unchanged
+    // (the reported excerpt stays the author's own text), and the masked text feeds
+    // both the per-tell scan and the document density score, so a declared phrase
+    // contributes to neither.
+    let masked = mask_allowed(input, allow_lc);
     let tells = if markdown {
-        host_grammar::scan_prose_markdown(input)
+        host_grammar::scan_prose_markdown(&masked)
     } else {
-        host_grammar::scan_prose_parallel(input)
+        host_grammar::scan_prose_parallel(&masked)
     };
     // Locate each tell. The engine emits one tell per occurrence, but in the markdown
     // path tells of the same (id, excerpt) arrive grouped, and a first-occurrence line
@@ -700,7 +709,7 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     // excerpt the markdown extractor normalised away falls back to a probe line (no
     // column); one that never appears at all is a non-locatable whole-document
     // diagnosis — advisory, emitted once.
-    let input_lc = input.to_ascii_lowercase();
+    let input_lc = masked.to_ascii_lowercase();
     let mut cursor: std::collections::HashMap<(&str, &str), usize> =
         std::collections::HashMap::new();
     for t in &tells {
@@ -735,9 +744,9 @@ pub fn scan_prose_text(input: &str, source: &str, matches: &mut Vec<Match>) {
         // surplus or an already-emitted repeat → drop.
     }
     let score = if markdown {
-        host_grammar::tell_score_markdown(input)
+        host_grammar::tell_score_markdown(&masked)
     } else {
-        host_grammar::tell_score(input)
+        host_grammar::tell_score(&masked)
     };
     if score.over_threshold {
         matches.push(Match {
