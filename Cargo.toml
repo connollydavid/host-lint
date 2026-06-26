@@ -1,6 +1,6 @@
 [package]
 name = "host-lint"
-version = "0.10.3"
+version = "0.10.4"
 edition = "2021"
 description = "Detect phase-synonym agentic tells in commits, headers, and comments"
 license = "Unlicense"

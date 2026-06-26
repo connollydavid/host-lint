@@ -825,31 +825,28 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
 /// property of authored narrative, so `--docs` walks `.md` only and never runs the
 /// prose engine over `.rs`/`.toml`/`.sh` (which would flag decoration in code
 /// comments and string literals, with a meaningless clean-to-zero bar over source).
-/// It reuses the `--all` `git ls-files` walk, so gitignored output, vendored deps,
-/// untracked worktrees, and submodules never appear; `.host-lintignore` filters the
-/// rest (e.g. the append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3),
-/// as elsewhere; the `verify` gate's recheck treats that non-zero as a regression.
-/// Returns the matches or an error string — the binary prints it and exits 2; an
-/// in-process embedder surfaces it as it chooses. The shared walk, so host-lint and
-/// host-lifecycle audit docs through one engine (host-lifecycle#2).
+/// It walks the **authored working tree**: `git ls-files` (tracked and staged) plus
+/// `git ls-files --others --exclude-standard` (untracked files git would offer to add),
+/// so a brand-new authored doc is audited before it is even staged, and a pre-commit
+/// run is never silently clean over a file it skipped (host-lint#17). `--exclude-standard`
+/// keeps gitignored output, vendored deps, untracked worktrees, and submodules out, just
+/// as the bare `git ls-files` walk did; `.host-lintignore` filters the rest (e.g. the
+/// append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3), as elsewhere; the
+/// `verify` gate's recheck treats that non-zero as a regression. Returns the matches or an
+/// error string — the binary prints it and exits 2; an in-process embedder surfaces it as
+/// it chooses. The shared walk, so host-lint and host-lifecycle audit docs through one
+/// engine (host-lifecycle#2).
 pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<Match>, String> {
     let mut matches = Vec::new();
     if root.as_os_str().is_empty() {
         return Ok(matches);
     }
     let root_str = root.to_string_lossy();
-    let output = Command::new("git")
-        .args(["-C", root_str.as_ref(), "ls-files", "-z"])
-        .output()
-        .map_err(|e| format!("--docs needs git on PATH: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "--docs needs a git repository (git ls-files failed: {})",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    for rel in text.split('\0').filter(|s| !s.is_empty()) {
+    // The authored working tree: tracked and staged, then untracked-but-not-ignored. The
+    // two sets are disjoint (an entry is either in the index or not), so no dedup is needed.
+    let tracked = git_paths(root_str.as_ref(), &["ls-files", "-z"])?;
+    let untracked = git_paths(root_str.as_ref(), &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    for rel in tracked.iter().chain(untracked.iter()) {
         if !rel.to_ascii_lowercase().ends_with(".md") {
             continue;
         }
@@ -868,6 +865,30 @@ pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<
         }
     }
     Ok(matches)
+}
+
+/// Run a `git ls-files`-family command under `-C <root>` and split its NUL-delimited
+/// output into repo-relative paths. A non-zero exit (not a git repo) becomes the `--docs`
+/// diagnostic the caller surfaces.
+fn git_paths(root: &str, extra: &[&str]) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(extra.iter().copied())
+        .output()
+        .map_err(|e| format!("--docs needs git on PATH: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "--docs needs a git repository (git {} failed: {})",
+            extra.first().copied().unwrap_or("ls-files"),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect())
 }
 
 /// Escalate decoration tells on the commit subject to blocking `Flag`. The first

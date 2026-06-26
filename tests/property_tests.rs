@@ -982,3 +982,40 @@ fn run_docs_masks_a_lexicon_declared_prose_tell() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+// host-lint#17: `--docs` walks the authored working tree (tracked + staged + untracked
+// non-ignored), so a brand-new doc is audited before it is staged and a pre-commit run is
+// never silently clean over a file it skipped — while gitignored generated output stays out.
+#[test]
+fn run_docs_scans_untracked_authored_but_not_gitignored() {
+    let dir = std::env::temp_dir().join(format!("hl-docs-untracked-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q", "-b", "main"]);
+    git(&dir, &["config", "user.email", "t@t"]);
+    git(&dir, &["config", "user.name", "t"]);
+    // A decoration trope (an em dash) in three kinds of file.
+    let trope = "# T\n\nWe shipped it \u{2014} and it works.\n";
+    fs::write(dir.join("tracked.md"), trope).unwrap();
+    // A gitignored generated tree that must NEVER be scanned.
+    fs::write(dir.join(".gitignore"), "/gen/\n").unwrap();
+    fs::create_dir_all(dir.join("gen")).unwrap();
+    fs::write(dir.join("gen/page.md"), trope).unwrap();
+    git(&dir, &["add", "tracked.md", ".gitignore"]);
+    git(&dir, &["commit", "-qm", "init"]);
+    // A brand-new authored doc, created but never staged.
+    fs::write(dir.join("new.md"), trope).unwrap();
+
+    let m = host_lint::run_docs(&dir, &[], &[]).unwrap();
+    let flagged: std::collections::HashSet<&str> = m.iter().map(|x| x.file.as_str()).collect();
+    assert!(flagged.contains("tracked.md"), "a tracked authored doc is scanned");
+    assert!(
+        flagged.contains("new.md"),
+        "host-lint#17: a new untracked authored doc is scanned, not silently skipped"
+    );
+    assert!(
+        !flagged.contains("gen/page.md"),
+        "a gitignored generated doc stays excluded (--exclude-standard)"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
