@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, LexiconEntry, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry};
+use host_lint::{Match, Severity, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -19,53 +19,6 @@ fn repo_root() -> String {
         .unwrap_or_default()
 }
 
-// The repo's LEXICON (issue #13): the validated allowlist phrases (lowercased for
-// case-insensitive masking), the committed `strict` flag, and the parsed entries
-// (for the `lexicon` subcommand). An invalid entry — a master key, a tracker ref
-// with no URL, a laundered tell — is reported to stderr and then dropped: it never
-// masks, so soundness does not depend on the file being hand-edited correctly.
-// A missing file yields an empty lexicon (the feature is opt-in per repo).
-struct Lexicon {
-    phrases_lc: Vec<String>,
-    strict: bool,
-    jira_keys: Vec<String>,
-    entries: Vec<LexiconEntry>,
-}
-
-fn load_lexicon(root: &str) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), entries: Vec::new() };
-    if root.is_empty() {
-        return lex;
-    }
-    let content = match fs::read_to_string(Path::new(root).join(LEXICON_FILE)) {
-        Ok(c) => c,
-        Err(_) => return lex,
-    };
-    // Directives first (strict, jira-key), collected before any entry so an
-    // entry's validation sees every declared key regardless of line order.
-    for line in content.lines() {
-        if is_strict_directive(line) {
-            lex.strict = true;
-        } else if let Some(keys) = parse_jira_keys(line) {
-            lex.jira_keys.extend(keys);
-        }
-    }
-    // Then the entries, validated against the collected directives.
-    for line in content.lines() {
-        if is_strict_directive(line) || parse_jira_keys(line).is_some() {
-            continue;
-        }
-        let Some(entry) = parse_lexicon_line(line) else { continue };
-        if let Err(reason) = validate_lexicon_entry(&entry, &lex.jira_keys) {
-            eprintln!("host-lint: LEXICON entry ignored ({reason})");
-            continue;
-        }
-        lex.phrases_lc.push(entry.phrase.to_ascii_lowercase());
-        lex.entries.push(entry);
-    }
-    lex
-}
-
 // `host-lint lexicon <list|add|rm|--check>`: the CRUD that owns every LEXICON
 // decision so a weak agent never hand-authors the file (issue #13). `add` runs the
 // three guards and refuses a master key, a laundered tell, or an un-cited tracker
@@ -74,7 +27,7 @@ fn run_lexicon(root: &str, args: &[String]) -> ! {
     let path = Path::new(root).join(LEXICON_FILE);
     match args.first().map(String::as_str) {
         Some("list") => {
-            let lex = load_lexicon(root);
+            let lex = load_lexicon(Path::new(root));
             println!("strict: {}", if lex.strict { "on" } else { "off" });
             for e in &lex.entries {
                 match &e.url {
@@ -91,7 +44,7 @@ fn run_lexicon(root: &str, args: &[String]) -> ! {
             };
             let url = parse_url_flag(&args[2..]);
             let entry = LexiconEntry { phrase: phrase.clone(), url };
-            let existing = load_lexicon(root);
+            let existing = load_lexicon(Path::new(root));
             if let Err(reason) = validate_lexicon_entry(&entry, &existing.jira_keys) {
                 eprintln!("host-lint: refused ({reason})");
                 process::exit(1);
@@ -186,7 +139,7 @@ fn run_lexicon(root: &str, args: &[String]) -> ! {
         // so a network-having lane (CI / opt-in) re-derives liveness. Off the commit
         // hook by design — it needs the network the hook must not.
         Some("--check-urls") => {
-            let cited: Vec<LexiconEntry> = load_lexicon(root)
+            let cited: Vec<LexiconEntry> = load_lexicon(Path::new(root))
                 .entries
                 .into_iter()
                 .filter(|e| e.url.is_some())
@@ -408,57 +361,6 @@ fn load_ignore(root: &str) -> Vec<String> {
     }
 }
 
-// `--docs` is the repo-wide prose lane — the counterpart to the naming `--all`.
-// Scope determines type: naming tells hide in any file, but prose tropes are a
-// property of authored narrative, so `--docs` walks `.md` only and never runs the
-// prose engine over `.rs`/`.toml`/`.sh` (which would flag decoration in code
-// comments and string literals, with a meaningless clean-to-zero bar over source).
-// It reuses the `--all` `git ls-files` walk, so gitignored output, vendored deps,
-// untracked worktrees, and submodules never appear; `.host-lintignore` filters the
-// rest (e.g. the append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3),
-// as elsewhere; the `verify` gate's recheck treats that non-zero as a regression.
-fn run_docs(root: &str, allow: &[String], ignore: &[String], matches: &mut Vec<Match>) {
-    if root.is_empty() {
-        return;
-    }
-    let output = match process::Command::new("git")
-        .args(["-C", root, "ls-files", "-z"])
-        .output()
-    {
-        Ok(o) if o.status.success() => o,
-        Ok(o) => {
-            eprintln!(
-                "host-lint: --docs needs a git repository (git ls-files failed: {})",
-                String::from_utf8_lossy(&o.stderr).trim()
-            );
-            process::exit(2);
-        }
-        Err(e) => {
-            eprintln!("host-lint: --docs needs git on PATH: {e}");
-            process::exit(2);
-        }
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    for rel in text.split('\0').filter(|s| !s.is_empty()) {
-        if !rel.to_ascii_lowercase().ends_with(".md") {
-            continue;
-        }
-        if path_ignored(rel, ignore) {
-            continue;
-        }
-        let path = Path::new(root).join(rel);
-        if fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
-            continue;
-        }
-        if !path.is_file() {
-            continue;
-        }
-        if let Ok(content) = fs::read_to_string(&path) {
-            scan_prose_text(&content, rel, allow, matches);
-        }
-    }
-}
-
 fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
@@ -579,7 +481,7 @@ fn main() {
     }
 
     let root = repo_root();
-    let lex = load_lexicon(&root);
+    let lex = load_lexicon(Path::new(&root));
     let allow = lex.phrases_lc.as_slice();
     let strict = lex.strict;
     let mut matches = Vec::new();
@@ -603,7 +505,13 @@ fn main() {
     } else if all_flag {
         run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
     } else if docs_flag {
-        run_docs(&root, allow, &load_ignore(&root), &mut matches);
+        match run_docs(Path::new(&root), allow, &load_ignore(&root)) {
+            Ok(m) => matches.extend(m),
+            Err(e) => {
+                eprintln!("host-lint: {e}");
+                process::exit(2);
+            }
+        }
     } else if log_flag {
         run_log(allow, strict, &mut matches);
     } else if files.is_empty() {

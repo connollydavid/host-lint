@@ -6,6 +6,9 @@ use host_lint::{
     scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 // host#16: a positional reference to a milestone checklist item (box/boxes/steps
 // + a numeral, a range, or a glued hyphen-digit form) is the ordinal-by-position
@@ -913,4 +916,69 @@ fn host_lint_ignore_regions_flank_a_still_scanned_code_block() {
     // the whole region stays quarantined, fences and all.
     assert!(scan("```host-lint:ignore\nPhase 1\n```rust\nPhase 2\n```", "doc.md").is_empty(),
         "an info-string fence must not close an ignore region");
+}
+
+// host-lifecycle#2: the LEXICON loader and the `--docs` walk live in the shared engine,
+// so an in-process embedder (host-lifecycle's prose recheck) masks exactly the phrases
+// the CLI does. These two tests pin that contract through the public API.
+
+fn git(dir: &Path, args: &[&str]) {
+    let ok = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    assert!(ok, "git {args:?} failed");
+}
+
+#[test]
+fn load_lexicon_returns_validated_lowercased_phrases() {
+    let dir = std::env::temp_dir().join(format!("hl-lex-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    // Two declared phrases (mixed case), plus a master-key entry that must be dropped.
+    fs::write(dir.join("LEXICON"), "Wdm-Harness\nthe harness\n*\n").unwrap();
+    let lex = host_lint::load_lexicon(&dir);
+    assert!(lex.phrases_lc.contains(&"wdm-harness".to_string()), "phrases are ASCII-lowercased");
+    assert!(lex.phrases_lc.contains(&"the harness".to_string()));
+    assert!(
+        !lex.phrases_lc.iter().any(|p| p == "*"),
+        "a master-key entry is dropped — it never masks"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn run_docs_masks_a_lexicon_declared_prose_tell() {
+    let dir = std::env::temp_dir().join(format!("hl-docs-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q", "-b", "main"]);
+    git(&dir, &["config", "user.email", "t@t"]);
+    git(&dir, &["config", "user.name", "t"]);
+    // "harness" is an ai-diction term; two occurrences in one doc trip the density warn.
+    fs::write(
+        dir.join("doc.md"),
+        "# Title\n\nThe wdm-harness drives the lane. The harness emits a verdict.\n",
+    )
+    .unwrap();
+    git(&dir, &["add", "-A"]);
+    git(&dir, &["commit", "-qm", "doc"]);
+    // Undeclared: the prose tell fires.
+    let bare = host_lint::run_docs(&dir, &[], &[]).unwrap();
+    assert!(
+        bare.iter().any(|m| m.severity == Severity::Warn),
+        "undeclared, the ai-diction term warns in the --docs walk"
+    );
+    // Declared: the same phrases are masked before detection, so the warn clears —
+    // the in-process embedder gets the identical verdict to standalone `host-lint --docs`.
+    let allow = vec!["wdm-harness".to_string(), "the harness".to_string()];
+    let masked = host_lint::run_docs(&dir, &allow, &[]).unwrap();
+    assert!(
+        !masked.iter().any(|m| m.severity == Severity::Warn),
+        "a LEXICON-declared phrase clears the prose tell in the shared --docs walk"
+    );
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -1,3 +1,7 @@
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
 const FLAG_TERMS: &[&str] = &[
     "phase", "stage", "step", "part", "pass", "round", "iteration",
     "sprint", "cycle", "increment", "wave", "batch", "section",
@@ -541,6 +545,58 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
     Ok(())
 }
 
+/// The repo's LEXICON (issue #13): the validated allowlist phrases (lowercased for
+/// case-insensitive masking), the committed `strict` flag, the declared tracker keys,
+/// and the parsed entries (for the `lexicon` subcommand). Lives in the shared engine so
+/// host-lint's binary and an in-process embedder (host-lifecycle) load and mask the same
+/// declared phrases identically (host-lifecycle#2).
+pub struct Lexicon {
+    pub phrases_lc: Vec<String>,
+    pub strict: bool,
+    pub jira_keys: Vec<String>,
+    pub entries: Vec<LexiconEntry>,
+}
+
+/// Read and validate the repo's `LEXICON` file (at `root`). An invalid entry — a master
+/// key, a tracker ref with no URL, a laundered tell — is reported to stderr and dropped:
+/// it never masks, so soundness does not depend on the file being hand-edited correctly.
+/// A missing file yields an empty lexicon (the feature is opt-in per repo). The single
+/// loader both the CLI and an embedder call, so the prose/`--docs` lane masks the same
+/// declared phrases everywhere.
+pub fn load_lexicon(root: &Path) -> Lexicon {
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), entries: Vec::new() };
+    if root.as_os_str().is_empty() {
+        return lex;
+    }
+    let content = match fs::read_to_string(root.join("LEXICON")) {
+        Ok(c) => c,
+        Err(_) => return lex,
+    };
+    // Directives first (strict, jira-key), collected before any entry so an
+    // entry's validation sees every declared key regardless of line order.
+    for line in content.lines() {
+        if is_strict_directive(line) {
+            lex.strict = true;
+        } else if let Some(keys) = parse_jira_keys(line) {
+            lex.jira_keys.extend(keys);
+        }
+    }
+    // Then the entries, validated against the collected directives.
+    for line in content.lines() {
+        if is_strict_directive(line) || parse_jira_keys(line).is_some() {
+            continue;
+        }
+        let Some(entry) = parse_lexicon_line(line) else { continue };
+        if let Err(reason) = validate_lexicon_entry(&entry, &lex.jira_keys) {
+            eprintln!("host-lint: LEXICON entry ignored ({reason})");
+            continue;
+        }
+        lex.phrases_lc.push(entry.phrase.to_ascii_lowercase());
+        lex.entries.push(entry);
+    }
+    lex
+}
+
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     scan_text_with_allow(input, source, &[], matches);
 }
@@ -762,6 +818,56 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
             cite: "tropes.fyi: many devices together".to_string(),
         });
     }
+}
+
+/// `--docs` is the repo-wide prose lane — the counterpart to the naming `--all`.
+/// Scope determines type: naming tells hide in any file, but prose tropes are a
+/// property of authored narrative, so `--docs` walks `.md` only and never runs the
+/// prose engine over `.rs`/`.toml`/`.sh` (which would flag decoration in code
+/// comments and string literals, with a meaningless clean-to-zero bar over source).
+/// It reuses the `--all` `git ls-files` walk, so gitignored output, vendored deps,
+/// untracked worktrees, and submodules never appear; `.host-lintignore` filters the
+/// rest (e.g. the append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3),
+/// as elsewhere; the `verify` gate's recheck treats that non-zero as a regression.
+/// Returns the matches or an error string — the binary prints it and exits 2; an
+/// in-process embedder surfaces it as it chooses. The shared walk, so host-lint and
+/// host-lifecycle audit docs through one engine (host-lifecycle#2).
+pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<Match>, String> {
+    let mut matches = Vec::new();
+    if root.as_os_str().is_empty() {
+        return Ok(matches);
+    }
+    let root_str = root.to_string_lossy();
+    let output = Command::new("git")
+        .args(["-C", root_str.as_ref(), "ls-files", "-z"])
+        .output()
+        .map_err(|e| format!("--docs needs git on PATH: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "--docs needs a git repository (git ls-files failed: {})",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    for rel in text.split('\0').filter(|s| !s.is_empty()) {
+        if !rel.to_ascii_lowercase().ends_with(".md") {
+            continue;
+        }
+        if path_ignored(rel, ignore) {
+            continue;
+        }
+        let path = root.join(rel);
+        if fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        if let Ok(content) = fs::read_to_string(&path) {
+            scan_prose_text(&content, rel, allow, &mut matches);
+        }
+    }
+    Ok(matches)
 }
 
 /// Escalate decoration tells on the commit subject to blocking `Flag`. The first
