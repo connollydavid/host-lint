@@ -2,11 +2,15 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// Tier 1 (flag): the high-centrality words for a unit of iterative project work,
+// the agentic ordinal-naming tell the gate exists to block. The set is grounded in
+// measured corpus data (plan/0055): each either has proven in-project tells
+// (`stage` named six work units in this repo's own history) or near-zero
+// false-positive exposure in real code. Domain-heavy words (section, round, step,
+// epoch, ...) live in the advisory tier below, not here.
 const FLAG_TERMS: &[&str] = &[
-    "phase", "stage", "iteration",
-    "sprint", "cycle", "increment", "wave", "batch", "section",
-    "period", "era", "epoch", "chapter", "episode", "instalment",
-    "leg", "lap",
+    "phase", "stage", "iteration", "sprint", "cycle", "increment", "wave",
+    "episode", "instalment", "leg", "lap",
     // Positional references to a milestone checklist item (host#16): the
     // "box N" / "boxes N-M" / "steps N-M" shape, the same ordinal-by-position
     // tell aimed at the "[ ]"/"[x]" marks. Plurals are listed explicitly
@@ -14,14 +18,19 @@ const FLAG_TERMS: &[&str] = &[
     "box", "boxes", "steps",
 ];
 
-// Tier 3 (warn): verb and measurement nouns that collide with ordinary English
-// even when a numeral sits immediately after them ("pass 2 arguments", "round 2
-// decimals", "level 3 cache", "step into 3", "part 2 of the file"). Demoted from
-// the blocking tier to advisory (plan/0055, call/0037): the positional reading is
-// real but cannot be told apart from the verb/measurement reading, so it warns
-// rather than blocks. Strict mode still escalates an undeclared occurrence to a
+// Tier 3 (warn): words whose ordinal use is overwhelmingly domain vocabulary, not
+// the naming of a work unit. Measured against ~35.5k real .rs files (plan/0055,
+// call/0037): `round` (cipher rounds), `level` (log/DTD levels), `step` (tutorial
+// steps), `pass` (compiler passes), `part`, `section` (RFC/doc sections — 2785
+// hits, the largest source), `chapter` (book chapters), `epoch` (ML training),
+// `batch` (jobs), `era`/`period` (time) all collide with ordinary code even at
+// immediate adjacency, and each is a complete flag the LEXICON cannot escape. They
+// warn rather than block; strict still escalates an undeclared occurrence to a
 // flag, and the gather lane still surfaces it.
-const WARN_ORDINAL_TERMS: &[&str] = &["pass", "round", "step", "level", "part"];
+const WARN_ORDINAL_TERMS: &[&str] = &[
+    "pass", "round", "step", "level", "part",
+    "section", "chapter", "epoch", "batch", "era", "period",
+];
 
 const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
 

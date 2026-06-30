@@ -72,7 +72,7 @@ fn gather_surfaces_recurring_novel_shape_and_skips_noise() {
 proptest! {
     #[test]
     fn flag_term_followed_by_arabic_numeral_is_detected(
-        term in "phase|stage|iteration|sprint|cycle|increment|wave|batch|section|period|era|epoch|chapter|episode|instalment|leg|lap|box|boxes|steps",
+        term in "phase|stage|iteration|sprint|cycle|increment|wave|episode|instalment|leg|lap|box|boxes|steps",
         numeral in "[0-9]+"
     ) {
         let line = format!("{} {}", term, numeral);
@@ -81,7 +81,7 @@ proptest! {
 
     #[test]
     fn flag_term_followed_by_multi_letter_uppercase_roman_is_detected(
-        term in "phase|stage|sprint|section|chapter",
+        term in "phase|stage|sprint|wave|cycle",
         // A multi-letter Roman numeral written uppercase ("Phase IV") is a real
         // positional tell. Single-letter Roman is excluded (see the negative
         // test below): "I"/"C" collide with the pronoun and language letters.
@@ -93,7 +93,7 @@ proptest! {
 
     #[test]
     fn flag_term_followed_by_single_letter_or_lowercase_roman_does_not_block(
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         // A single-letter Roman ("I", "C", "V") is the pronoun/language-letter
         // collision; a lowercase token that merely parses as Roman ("mix", "vi")
         // is an ordinary word. Neither blocks (plan/0055).
@@ -105,7 +105,7 @@ proptest! {
 
     #[test]
     fn flag_term_without_numeral_is_not_detected(
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         word in "[a-z]{3,10}"
     ) {
         let line = format!("{} {}", term, word);
@@ -124,7 +124,7 @@ proptest! {
     #[test]
     fn descriptive_prose_with_flag_term_is_not_detected(
         prefix in "the|this|that|my|your",
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         suffix in "over|through|across|into"
     ) {
         let line = format!("{} {} {} the array", prefix, term, suffix);
@@ -133,7 +133,7 @@ proptest! {
 
     #[test]
     fn flag_term_with_intermediate_word_does_not_block(
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         intermediate in "of|in|to|into|over",
         numeral in "[0-9]+"
     ) {
@@ -165,7 +165,7 @@ proptest! {
     #[test]
     fn markdown_headers_are_detected(
         level in 1..7usize,
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         numeral in "[0-9]+"
     ) {
         let hashes = "#".repeat(level);
@@ -269,7 +269,7 @@ proptest! {
 
     #[test]
     fn flag_term_followed_by_decimal_numeral_is_detected(
-        term in "phase|stage|sprint|section",
+        term in "phase|stage|sprint|wave",
         major in 0..100u32,
         minor in 0..100u32
     ) {
@@ -466,20 +466,32 @@ fn plan_0055_blocking_tier_precision_recut() {
     assert!(check_line("Phase IV ships the parser").is_some(), "Phase IV should flag");
     assert!(check_line("Stage VIII review").is_some(), "Stage VIII should flag");
 
-    // N2 / demotion: the verb and measurement terms warn, never block, and their
-    // two-word-window false flags stay clean.
+    // N2 / demotion (data-grounded, plan/0055): the verb/measurement terms and the
+    // domain-heavy terms warn, never block. round/level/step/part/pass plus the six
+    // measured as domain-heavy in real code (section, chapter, epoch, batch, era,
+    // period) are advisory; their two-word-window false flags stay clean.
     for warn in [
         "pass 2 arguments to the helper",
         "round 2 decimal places",
         "level 3 cache eviction",
         "part 2 of the file",
+        "see section 3 of the spec",
+        "chapter 2 of the book",
+        "train for epoch 0 then stop",
+        "batch 2 of the jobs",
+        "era 3 of the migration",
+        "period 4 review window",
     ] {
-        assert_eq!(check_line(warn), None, "verb term must not block: {warn}");
+        assert_eq!(check_line(warn), None, "domain term must not block: {warn}");
         assert_eq!(
             classify_line(warn, false).map(|(s, _)| s),
             Some(Severity::Warn),
-            "verb term should warn: {warn}"
+            "domain term should warn: {warn}"
         );
+    }
+    // The high-centrality work-unit words still block.
+    for flag in ["wave 2 of rollout", "sprint 3 backlog", "cycle 4 review", "increment 2 shipped"] {
+        assert!(check_line(flag).is_some(), "work-unit term should flag: {flag}");
     }
     for clean in [
         "step into 3 dimensions of design",
@@ -594,9 +606,11 @@ fn scan_one(line: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match> {
 
 #[test]
 fn allowed_phrase_suppresses_its_own_flag() {
-    // "section 1" is a hard flag (section is a flag noun); allow-listing it clears it.
-    assert!(!scan_one("see section 1 of the spec", "doc.md", &[]).is_empty());
-    assert!(scan_one("see section 1 of the spec", "doc.md", &["section 1"]).is_empty());
+    // "wave 1" is a flag (wave is a position noun); masking the phrase clears it.
+    // (Such a bare-flag phrase is not a registerable LEXICON entry — G2 refuses a
+    // position noun — but mask_allowed is exercised here as the masking mechanism.)
+    assert!(!scan_one("see wave 1 of the rollout", "doc.md", &[]).is_empty());
+    assert!(scan_one("see wave 1 of the rollout", "doc.md", &["wave 1"]).is_empty());
 }
 
 #[test]
@@ -615,8 +629,8 @@ fn allow_is_case_insensitive() {
 
 #[test]
 fn allow_does_not_clear_a_different_tell_on_the_same_line() {
-    // Allow-listing "section 1" must not mask the separate "phase 4" tell.
-    let m = scan_one("section 1 covers phase 4 work", "doc.md", &["section 1"]);
+    // Allow-listing "wave 1" must not mask the separate "phase 4" tell.
+    let m = scan_one("wave 1 covers phase 4 work", "doc.md", &["wave 1"]);
     assert_eq!(m.len(), 1, "phase 4 must still flag");
     assert_eq!(m[0].term, "phase");
 }
