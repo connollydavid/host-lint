@@ -267,7 +267,7 @@ proptest! {
         prop_assert!(check_line(&line).is_none(), "line: {}", line);
     }
 
-    // --- Tier 1: decimal numerals after a flag noun ---
+    // --- flag tier: decimal numerals after a flag noun ---
 
     #[test]
     fn flag_term_followed_by_decimal_numeral_is_detected(
@@ -289,7 +289,7 @@ proptest! {
         prop_assert!(!is_numeral(&ver), "ver: {}", ver);
     }
 
-    // --- Tier 2: leading label prefix (flag) ---
+    // --- flag tier: leading label prefix (flag) ---
 
     #[test]
     fn leading_numeral_label_prefix_is_flagged(
@@ -314,7 +314,7 @@ proptest! {
         prop_assert!(check_label_prefix(&line).is_none(), "line: {}", line);
     }
 
-    // --- Tier 3: warn ---
+    // --- warn tier: warn ---
 
     #[test]
     fn bare_dotted_code_in_prose_warns(

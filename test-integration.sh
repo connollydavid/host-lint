@@ -169,7 +169,7 @@ else
     bad "--all scans symlinked content once (got $count)"
 fi
 
-# --- Tier 1+2: decimal numerals and label prefix (expect flag, rc=1) ---
+# --- flag tier: decimal numerals and label prefix (expect flag, rc=1) ---
 echo ""
 echo "--- Decimal numerals + label prefix (expect flag) ---"
 for s in 'entry point (Phase 5.0).' '5.5: exec/pty tools' '// 5.5: the pty exec tool' '## 5.5: error handling'; do
@@ -177,7 +177,7 @@ for s in 'entry point (Phase 5.0).' '5.5: exec/pty tools' '// 5.5: the pty exec 
     [ "$rc" -eq 1 ] && ok "flag: $s" || bad "flag: $s (rc=$rc)"
 done
 
-# --- Tier 3: bare-numeral degenerate form (expect warn, rc=3) ---
+# --- warn tier: bare-numeral degenerate form (expect warn, rc=3) ---
 echo ""
 echo "--- Bare-numeral degenerate form (expect warn) ---"
 for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5.3' 'implements work-item 5.3' 'section 2.1 of the spec'; do
@@ -185,7 +185,7 @@ for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5
     [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
 done
 
-# --- Tier 3: leading code-as-name label (expect warn, rc=3) ---
+# --- warn tier: leading code-as-name label (expect warn, rc=3) ---
 echo ""
 echo "--- Leading code label (expect warn) ---"
 for s in 'F1: PE version stamp 3.10' 'F2: handle isolation' 'B3: the durable name follows'; do

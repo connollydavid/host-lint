@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// Tier 1 (flag): the high-centrality words for a unit of iterative project work,
+// flag tier: the high-centrality words for a unit of iterative project work,
 // the agentic ordinal-naming tell the gate exists to block. The set is grounded in
 // measured corpus data (plan/0055): each either has proven in-project tells
 // (`stage` named six work units in this repo's own history) or near-zero
@@ -18,7 +18,7 @@ pub const FLAG_TERMS: &[&str] = &[
     "box", "boxes", "steps",
 ];
 
-// Tier 3 (warn): words whose ordinal use is overwhelmingly domain vocabulary, not
+// warn tier: words whose ordinal use is overwhelmingly domain vocabulary, not
 // the naming of a work unit. Measured against ~35.5k real .rs files (plan/0055,
 // call/0037): `round` (cipher rounds), `level` (log/DTD levels), `step` (tutorial
 // steps), `pass` (compiler passes), `part`, `section` (RFC/doc sections — 2785
@@ -34,13 +34,13 @@ pub const WARN_ORDINAL_TERMS: &[&str] = &[
 
 const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
 
-// Tier 3 (warn): filing-system code nouns whose numbered label is a milestone
+// warn tier: filing-system code nouns whose numbered label is a milestone
 // code used as a name. Warned, not flagged, because the same nouns have
 // ordinary uses ("see item 5 in the list"). `pub` so property tests can exclude
 // these from the "safe designator" generator (a warn-noun like "WI" is not safe).
 pub const WARN_NOUNS: &[&str] = &["work-item", "workitem", "wi"];
 
-// Tier 3 (warn): a bare "N.N" code immediately preceded by one of these is a
+// warn tier: a bare "N.N" code immediately preceded by one of these is a
 // version string or a cross-reference, not a milestone code — skip it.
 const PREV_SKIP: &[&str] = &[
     "v", "version", "ver", "python", "node", "rust", "go", "java", "ruby",
@@ -48,7 +48,7 @@ const PREV_SKIP: &[&str] = &[
     "page", "chapter", "ch", "appendix",
 ];
 
-// Tier 3 (warn): a bare "N.N" code immediately followed by one of these units
+// warn tier: a bare "N.N" code immediately followed by one of these units
 // is a quantity, not a milestone code — skip it.
 const UNITS: &[&str] = &[
     "s", "sec", "secs", "second", "seconds", "ms", "min", "mins", "minute",
@@ -242,7 +242,7 @@ pub fn check_line(line: &str) -> Option<String> {
     None
 }
 
-// Tier 2 (flag): a bare numeral used as a label prefix at the start of a
+// flag tier: a bare numeral used as a label prefix at the start of a
 // subject line, header, or comment ("5.5: exec tools", "// 5.5: ..."). The
 // colon must be followed by whitespace or end-of-line so a clock time
 // ("5:30 standup") does not match.
@@ -284,7 +284,7 @@ pub fn check_label_prefix(line: &str) -> Option<String> {
     None
 }
 
-// Tier 3 (warn): the bare-numeral degenerate form with the noun elided — a
+// warn tier: the bare-numeral degenerate form with the noun elided — a
 // filing-system code noun followed by a numeral, or a bare dotted code used as
 // a name outside version/quantity contexts. Advisory only.
 pub fn check_warn(line: &str) -> Option<String> {
@@ -363,7 +363,7 @@ pub fn check_warn(line: &str) -> Option<String> {
     None
 }
 
-// Tier 3 (warn): a bare review-code (one letter + digits, e.g. "F1", "B2")
+// warn tier: a bare review-code (one letter + digits, e.g. "F1", "B2")
 // used as a leading label — the first non-bullet token of a line, immediately
 // followed by a label delimiter (an em/en-dash token, or a trailing colon on
 // the code itself). This is the section-5 code-as-name tell in its bare leading
