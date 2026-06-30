@@ -20,7 +20,7 @@ fn positional_checklist_references_flag() {
         "boxes 4-8 blocked",
         "box 3 root cause localized",
         "plan steps 3-5 updated",
-        "step 3-5 closed",
+        "steps 3-5 closed",
     ] {
         assert!(check_line(line).is_some(), "should flag: {line}");
     }
@@ -72,7 +72,7 @@ fn gather_surfaces_recurring_novel_shape_and_skips_noise() {
 proptest! {
     #[test]
     fn flag_term_followed_by_arabic_numeral_is_detected(
-        term in "phase|stage|step|part|pass|round|iteration|sprint|cycle|increment|wave|batch|section|period|era|epoch|chapter|episode|instalment|leg|lap|level",
+        term in "phase|stage|iteration|sprint|cycle|increment|wave|batch|section|period|era|epoch|chapter|episode|instalment|leg|lap|box|boxes|steps",
         numeral in "[0-9]+"
     ) {
         let line = format!("{} {}", term, numeral);
@@ -80,20 +80,32 @@ proptest! {
     }
 
     #[test]
-    fn flag_term_followed_by_roman_numeral_is_detected(
-        term in "phase|stage|step|part|pass|round",
-        // canonical Roman numerals only: host-grammar's is_numeral validates the
-        // form, so a non-canonical run like "IIII" is not a numeral (and a term
-        // followed by it is not a positional tell)
-        roman in "I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XL|L|XC|C|CD|D|CM|M"
+    fn flag_term_followed_by_multi_letter_uppercase_roman_is_detected(
+        term in "phase|stage|sprint|section|chapter",
+        // A multi-letter Roman numeral written uppercase ("Phase IV") is a real
+        // positional tell. Single-letter Roman is excluded (see the negative
+        // test below): "I"/"C" collide with the pronoun and language letters.
+        roman in "II|III|IV|VI|VII|VIII|IX|XI|XII|XIII|XIV|XV|XL|XC|CD|CM"
     ) {
         let line = format!("{} {}", term, roman);
         prop_assert!(check_line(&line).is_some(), "line: {}", line);
     }
 
     #[test]
+    fn flag_term_followed_by_single_letter_or_lowercase_roman_does_not_block(
+        term in "phase|stage|sprint|section",
+        // A single-letter Roman ("I", "C", "V") is the pronoun/language-letter
+        // collision; a lowercase token that merely parses as Roman ("mix", "vi")
+        // is an ordinary word. Neither blocks (plan/0055).
+        token in "I|V|X|L|C|D|M|mix|vi|div|civ"
+    ) {
+        let line = format!("{} {} fixed it", term, token);
+        prop_assert!(check_line(&line).is_none(), "line: {}", line);
+    }
+
+    #[test]
     fn flag_term_without_numeral_is_not_detected(
-        term in "phase|stage|step|part|pass|round",
+        term in "phase|stage|sprint|section",
         word in "[a-z]{3,10}"
     ) {
         let line = format!("{} {}", term, word);
@@ -112,7 +124,7 @@ proptest! {
     #[test]
     fn descriptive_prose_with_flag_term_is_not_detected(
         prefix in "the|this|that|my|your",
-        term in "phase|stage|step|pass",
+        term in "phase|stage|sprint|section",
         suffix in "over|through|across|into"
     ) {
         let line = format!("{} {} {} the array", prefix, term, suffix);
@@ -120,19 +132,21 @@ proptest! {
     }
 
     #[test]
-    fn flag_term_with_intermediate_word_is_detected(
-        term in "phase|stage|step",
-        intermediate in "of|in|to",
+    fn flag_term_with_intermediate_word_does_not_block(
+        term in "phase|stage|sprint|section",
+        intermediate in "of|in|to|into|over",
         numeral in "[0-9]+"
     ) {
+        // plan/0055 dropped the two-word window: a numeral two tokens after the
+        // noun ("phase of 2", "step into 3") is not a positional reference.
         let line = format!("{} {} {}", term, intermediate, numeral);
-        prop_assert!(check_line(&line).is_some(), "line: {}", line);
+        prop_assert!(check_line(&line).is_none(), "line: {}", line);
     }
 
     #[test]
     fn conventional_commit_with_phase_synonym_is_detected(
         prefix in "feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert",
-        term in "phase|stage|step",
+        term in "phase|stage|sprint",
         numeral in "[0-9]+"
     ) {
         let line = format!("{}: {} {} of refactor", prefix, term, numeral);
@@ -141,7 +155,7 @@ proptest! {
 
     #[test]
     fn case_insensitive_detection(
-        term in "Phase|PHASE|phase|PhAsE|sTaGe|STEP",
+        term in "Phase|PHASE|phase|PhAsE|sTaGe|STAGE",
         numeral in "[0-9]+"
     ) {
         let line = format!("## {}: {}", term, numeral);
@@ -151,7 +165,7 @@ proptest! {
     #[test]
     fn markdown_headers_are_detected(
         level in 1..7usize,
-        term in "phase|stage|step|part",
+        term in "phase|stage|sprint|section",
         numeral in "[0-9]+"
     ) {
         let hashes = "#".repeat(level);
@@ -162,7 +176,7 @@ proptest! {
     #[test]
     fn code_comments_are_detected(
         prefix in r"//|#|--|\*",
-        term in "pass|phase|step|round",
+        term in "phase|stage|sprint",
         numeral in "[0-9]+"
     ) {
         let line = format!("{} {} {}: tokenize", prefix, term, numeral);
@@ -255,7 +269,7 @@ proptest! {
 
     #[test]
     fn flag_term_followed_by_decimal_numeral_is_detected(
-        term in "phase|stage|step|part|section",
+        term in "phase|stage|sprint|section",
         major in 0..100u32,
         minor in 0..100u32
     ) {
@@ -395,7 +409,7 @@ proptest! {
 
     #[test]
     fn flag_wins_over_warn_on_the_same_line(
-        term in "phase|stage|step",
+        term in "phase|stage|sprint",
         a in 0..100u32, b in 0..100u32
     ) {
         // a flag noun plus a stray dotted code -> classified as a flag
@@ -431,6 +445,70 @@ fn issue_10_warn_cases() {
             line
         );
     }
+}
+
+// plan/0055: the blocking-tier precision recut. The criticals (Roman pronoun/
+// letter false-flags, the LEXICON laundering covered elsewhere), the verb-term
+// demotion, and the year/status guards.
+#[test]
+fn plan_0055_blocking_tier_precision_recut() {
+    // N1: a single-letter Roman (the pronoun "I", language letters) after a
+    // tell-noun no longer blocks, and a lowercase token that merely parses as
+    // Roman ("mix") is ordinary prose.
+    for clean in [
+        "this phase I shipped the fix",
+        "the next wave C landed",
+        "phase mix in the daw",
+    ] {
+        assert_eq!(check_line(clean), None, "should be clean (N1): {clean}");
+    }
+    // A multi-letter uppercase Roman after a tell-noun is still a real tell.
+    assert!(check_line("Phase IV ships the parser").is_some(), "Phase IV should flag");
+    assert!(check_line("Stage VIII review").is_some(), "Stage VIII should flag");
+
+    // N2 / demotion: the verb and measurement terms warn, never block, and their
+    // two-word-window false flags stay clean.
+    for warn in [
+        "pass 2 arguments to the helper",
+        "round 2 decimal places",
+        "level 3 cache eviction",
+        "part 2 of the file",
+    ] {
+        assert_eq!(check_line(warn), None, "verb term must not block: {warn}");
+        assert_eq!(
+            classify_line(warn, false).map(|(s, _)| s),
+            Some(Severity::Warn),
+            "verb term should warn: {warn}"
+        );
+    }
+    for clean in [
+        "step into 3 dimensions of design",
+        "port the pass to C",
+        "in this pass I fixed it",
+    ] {
+        assert_eq!(classify_line(clean, false), None, "verb collision clean: {clean}");
+    }
+
+    // N3: a year or status markdown heading is not a bare-ordinal tell.
+    for clean in ["## 2024", "## 2024.01"] {
+        assert_eq!(check_bare_numeral_header(clean), None, "year heading clean (N3): {clean}");
+    }
+    assert!(check_bare_numeral_header("## 3").is_some(), "## 3 should flag");
+    assert!(check_bare_numeral_header("## 3.5").is_some(), "## 3.5 should flag");
+
+    // N4: a date or year range is not a checklist range.
+    assert_eq!(check_line("release wave 2024-01 shipped"), None, "date-as-range clean (N4)");
+    assert!(check_line("wave 4-8 closed").is_some(), "short range still flags");
+
+    // N5: a status-code or numeric-key label is not a milestone label.
+    for clean in ["// 200: OK response handler", "// 404: not found"] {
+        assert_eq!(check_label_prefix(clean), None, "status-code label clean (N5): {clean}");
+    }
+    assert!(check_label_prefix("5.5: exec tools").is_some(), "5.5: still flags");
+    assert!(check_label_prefix("3: do the thing").is_some(), "3: still flags");
+
+    // a plain arabic tell still blocks
+    assert!(check_line("Phase 2 ships the new parser").is_some(), "Phase 2 should flag");
 }
 
 #[test]
@@ -804,6 +882,29 @@ fn lexicon_guard_g2_rejects_laundering_a_real_tell() {
     // it. (The 4B test tried exactly this: `lexicon add "Phase 5.5"`.)
     assert!(validate_lexicon_entry(&entry("Phase 5.5", None), &[]).is_err());
     assert!(validate_lexicon_entry(&entry("Step 3", None), &[]).is_err());
+}
+
+// plan/0055 (L1): the worst laundering case the guard exists to stop — a bare
+// position noun, or a phrase carrying one, masks that noun out of every real
+// "<noun> N" tell repo-wide (and defeats strict). It must be refused even though
+// the bare noun is not itself a complete flag.
+#[test]
+fn lexicon_guard_g2_rejects_a_bare_position_noun() {
+    for laundering in [
+        "phase",        // bare flag noun: masks every "phase 2"
+        "step",         // bare warn-ordinal noun: masks every "step 2" (and its strict flag)
+        "review",       // bare review noun: masks every "review #7"
+        "the phase",    // carries the noun: masks "the phase 2"
+        "wi",           // bare filing-code noun
+    ] {
+        assert!(
+            validate_lexicon_entry(&entry(laundering, None), &[]).is_err(),
+            "must refuse a phrase carrying a bare position noun: {laundering}"
+        );
+    }
+    // A warn-tier phrase with no standalone position noun is still legitimate.
+    assert!(validate_lexicon_entry(&entry("Decision 2.1", None), &[]).is_ok());
+    assert!(validate_lexicon_entry(&entry("cross-section view", None), &[]).is_ok());
 }
 
 #[test]

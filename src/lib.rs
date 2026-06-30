@@ -3,17 +3,25 @@ use std::path::Path;
 use std::process::Command;
 
 const FLAG_TERMS: &[&str] = &[
-    "phase", "stage", "step", "part", "pass", "round", "iteration",
+    "phase", "stage", "iteration",
     "sprint", "cycle", "increment", "wave", "batch", "section",
     "period", "era", "epoch", "chapter", "episode", "instalment",
-    "leg", "lap", "level",
+    "leg", "lap",
     // Positional references to a milestone checklist item (host#16): the
     // "box N" / "boxes N-M" / "steps N-M" shape, the same ordinal-by-position
     // tell aimed at the "[ ]"/"[x]" marks. Plurals are listed explicitly
-    // because the scan matches a whole whitespace token; "step" is already
-    // above.
+    // because the scan matches a whole whitespace token.
     "box", "boxes", "steps",
 ];
+
+// Tier 3 (warn): verb and measurement nouns that collide with ordinary English
+// even when a numeral sits immediately after them ("pass 2 arguments", "round 2
+// decimals", "level 3 cache", "step into 3", "part 2 of the file"). Demoted from
+// the blocking tier to advisory (plan/0055, call/0037): the positional reading is
+// real but cannot be told apart from the verb/measurement reading, so it warns
+// rather than blocks. Strict mode still escalates an undeclared occurrence to a
+// flag, and the gather lane still surfaces it.
+const WARN_ORDINAL_TERMS: &[&str] = &["pass", "round", "step", "level", "part"];
 
 const REVIEW_CODE_TERMS: &[&str] = &["review", "finding", "blocker"];
 
@@ -114,14 +122,20 @@ pub fn is_review_code(word: &str) -> bool {
     }
 }
 
-// A numeric range ("4-8"): two non-empty all-digit parts joined by a single
-// hyphen. A positional reference often spans a contiguous span of checklist
-// items (a range like "4-8"), which `is_numeral` does not accept.
+// A numeric range ("4-8"): two non-empty all-digit parts, each at most three
+// digits, joined by a single hyphen (ASCII or a typographic en/em-dash). A
+// positional reference often spans a contiguous span of checklist items (a range
+// like "4-8"), which `is_numeral` does not accept. The three-digit bound keeps a
+// four-digit side out: a date or a year range ("2024-01", "1999-2024") reads as
+// a year, not a checklist range.
 fn is_num_range(word: &str) -> bool {
-    match word.split_once('-') {
+    let normalized = word.replace(['–', '—'], "-");
+    match normalized.split_once('-') {
         Some((a, b)) => {
             !a.is_empty()
                 && !b.is_empty()
+                && a.len() <= 3
+                && b.len() <= 3
                 && a.bytes().all(|c| c.is_ascii_digit())
                 && b.bytes().all(|c| c.is_ascii_digit())
         }
@@ -129,30 +143,59 @@ fn is_num_range(word: &str) -> bool {
     }
 }
 
+// Whether the token immediately after a tell-noun reads as a *blocking* positional
+// numeral. Accepts an arabic integer or single decimal ("2", "5.5"), a checklist
+// range ("4-8"), or a multi-letter Roman numeral written in uppercase in the
+// source ("IV", "VIII"). `is_numeral` also accepts a single-letter Roman
+// (I, V, X, L, C, D, M), but those collide with the English pronoun "I" and with
+// language/identifier letters ("port the pass to C"), and a lowercase token that
+// merely parses as Roman ("mix", "vi") is an ordinary word — so neither blocks
+// here. A genuine "Phase 1" is written with a digit; "Phase i" is too ambiguous
+// to block (plan/0055).
+fn is_blocking_numeral(lower: &str, orig: &str) -> bool {
+    if lower.is_empty() {
+        return false;
+    }
+    if is_num_range(lower) {
+        return true;
+    }
+    // Arabic integer or single decimal (mirrors host-grammar's is_numeral arabic
+    // branch): at most two non-empty all-digit parts.
+    let parts: Vec<&str> = lower.split('.').collect();
+    if parts.len() <= 2 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())) {
+        return true;
+    }
+    // Multi-letter Roman numeral, uppercase in the source.
+    is_numeral(lower)
+        && lower.chars().count() >= 2
+        && orig.chars().any(|c| c.is_alphabetic())
+        && orig.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_ascii_uppercase())
+}
+
 pub fn check_line(line: &str) -> Option<String> {
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
+    let orig_words: Vec<&str> = line.split_whitespace().collect();
 
     for (i, word) in words.iter().enumerate() {
         let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
         if FLAG_TERMS.contains(&clean) {
-            // A numeral OR a numeric range (a span like "4-8") within two words
-            // marks the positional reference. The glued form (the noun joined to
-            // a numeral by a hyphen) is out of scope: a legitimate glued term has
-            // no numeral-free LEXICON prefix to declare, so it could not be
-            // escaped, and it is the same class as a noun-glued numeral.
+            // A tell-noun immediately followed by a blocking positional numeral.
+            // Only the immediately following token counts: a numeral two words
+            // away ("step into 3", "port the pass to C") is ordinary English, not
+            // a positional reference (plan/0055 dropped the two-word window). The
+            // glued form (the noun joined to a numeral by a hyphen) is out of
+            // scope: a legitimate glued term has no numeral-free LEXICON prefix to
+            // declare, so it could not be escaped, and it is the same class as a
+            // noun-glued numeral.
             if let Some(next) = words.get(i + 1) {
                 let next_clean = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                if is_numeral(next_clean) || is_num_range(next_clean) {
-                    let orig_word = words[i].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                    return Some(orig_word.to_string());
-                }
-            }
-            if let Some(next2) = words.get(i + 2) {
-                let next_clean = next2.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                if is_numeral(next_clean) || is_num_range(next_clean) {
-                    let orig_word = words[i].trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-                    return Some(orig_word.to_string());
+                let next_orig = orig_words
+                    .get(i + 1)
+                    .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    .unwrap_or(next_clean);
+                if is_blocking_numeral(next_clean, next_orig) {
+                    return Some(clean.to_string());
                 }
             }
         }
@@ -199,6 +242,12 @@ pub fn check_label_prefix(line: &str) -> Option<String> {
     if code.is_empty() || !is_numeral(&code) {
         return None;
     }
+    // A bare integer of three or more digits reads as a status code or numeric
+    // key ("200: OK", "404: not found"), not a milestone label. The dotted form
+    // ("5.5:") and short ordinals ("3:") still flag (plan/0055).
+    if !code.contains('.') && code.len() >= 3 {
+        return None;
+    }
     let mut after = s[code.len()..].chars();
     if after.next() == Some(':') {
         match after.next() {
@@ -221,6 +270,23 @@ pub fn check_warn(line: &str) -> Option<String> {
     for i in 0..words.len() {
         let word = words[i];
         let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+        // W3: a demoted verb/measurement ordinal noun immediately followed by a
+        // blocking positional numeral ("pass 2", "round 2", "level 3"). Advisory,
+        // because the noun's ordinary verb/measurement use is indistinguishable
+        // (plan/0055, call/0037). Immediate adjacency only, so "step into 3" and
+        // "port the pass to C" stay clean.
+        if WARN_ORDINAL_TERMS.contains(&clean) {
+            if let Some(next) = words.get(i + 1) {
+                let nc = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+                let no = orig
+                    .get(i + 1)
+                    .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
+                    .unwrap_or(nc);
+                if is_blocking_numeral(nc, no) {
+                    return Some(clean.to_string());
+                }
+            }
+        }
         // W1: a filing-code noun followed by a numeral (within two words).
         if WARN_NOUNS.contains(&clean) {
             for k in 1..=2 {
@@ -321,6 +387,12 @@ pub fn check_bare_numeral_header(line: &str) -> Option<String> {
         return None;
     }
     if parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
+        // A four-digit (or longer) component reads as a year, not a bare ordinal:
+        // a changelog "## 2024" or "## 2024.01" heading is not a position label.
+        // Mirrors the gather lane's year skip (plan/0055).
+        if parts.iter().any(|p| p.len() >= 4) {
+            return None;
+        }
         return Some(rest.to_string());
     }
     None
@@ -515,8 +587,12 @@ fn is_tracker_ref(phrase: &str, jira_keys: &[String]) -> bool {
 ///   - **G1 master-key** — a non-reference phrase must hold at least one letter, so a
 ///     bare `5.5` (which would silently clear every occurrence tree-wide) is refused.
 ///   - **G2 no-laundering** — a phrase that is *itself* a flag-tier tell (a phase-synonym
-///     label, say) is refused: you rename a real tell, you do not allow-list it. A mere
-///     warn-tier phrase (`Windows 3.1`, `Decision 2.1`) is the legitimate case, accepted.
+///     label, say) is refused: you rename a real tell, you do not allow-list it. A phrase
+///     that merely *carries* a position noun as a standalone word (`phase`, `step`, `review`)
+///     is refused for the same reason: masking it would blank that noun out of a real
+///     `<noun> N` tell, silencing the whole class and defeating strict (plan/0055). A mere
+///     warn-tier phrase with no such noun (`Windows 3.1`, `Decision 2.1`) is the legitimate
+///     case, accepted.
 pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<(), String> {
     if e.phrase.is_empty() {
         return Err("empty phrase".to_string());
@@ -540,6 +616,27 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
         return Err(format!(
             "'{}' is itself a tell ({}) — rename the work after its content; the lexicon legitimizes vocabulary, it does not silence real tells",
             e.phrase, term
+        ));
+    }
+    // A phrase that carries a position noun as a standalone word would, when
+    // masked, blank that noun out of a real "<noun> N" tell — silencing the whole
+    // class repo-wide and defeating strict (the masked line never produces the
+    // warn strict escalates). Refuse it (plan/0055, L1). Over-strict by design: a
+    // legitimate multiword phrase that happens to contain a bare position noun is
+    // rephrased; safety beats permissiveness here.
+    if let Some(noun) = e.phrase.split_whitespace().find_map(|w| {
+        let t = w
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+            .to_ascii_lowercase();
+        (FLAG_TERMS.contains(&t.as_str())
+            || WARN_ORDINAL_TERMS.contains(&t.as_str())
+            || REVIEW_CODE_TERMS.contains(&t.as_str())
+            || WARN_NOUNS.contains(&t.as_str()))
+        .then_some(t)
+    }) {
+        return Err(format!(
+            "'{}' carries the position noun '{}' as a word — masking it would blank that noun out of a real '{} N' tell; rename the work after its content rather than allow-list the tell shape",
+            e.phrase, noun, noun
         ));
     }
     Ok(())
