@@ -181,12 +181,18 @@ Scope the linter to commit subjects, plan and design markdown headers, and comme
 
 The blocking match is case-insensitive and word-boundaried: a blocking noun immediately
 followed by a blocking numeral. The numeral is an Arabic integer, a single-decimal
-milestone numeral (`5.5`), a short checklist range (`4-8`), or a **multi-letter Roman
-numeral written uppercase** (`IV`, `VIII`). A version-like form with two or more dots
-(`1.2.3`) is not a numeral; a **single-letter Roman** (`I`, `C`, `V`) never blocks,
-because it collides with the pronoun "I" and with language and identifier letters; and
-only the immediately following token counts, so a numeral two words away is not a
-positional reference. A four-digit (year-shaped) side is not a checklist range.
+milestone numeral (`5.5`), a short **ascending** checklist range (`4-8`), or a Roman
+numeral **written uppercase whose value is a plausible ordinal (`<= XXXIX`)** (`IV`,
+`VIII`, `XII`). A version-like form with two or more dots (`1.2.3`) is not a numeral, and
+these never block: a **single-letter Roman** (`I`, `C`, `V`) collides with the pronoun
+"I" and with language/identifier letters; a **larger Roman** (`DC`=600, `CM`=900,
+`MM`=2000, `MD`=1500, `DIV`=504, `XL`=40, `XC`=90) is an ordinary uppercase abbreviation,
+not an ordinal, so it would false-flag in a tell noun's home domain ("phase DC", "wave
+XL"); a **lowercase** token that merely parses as Roman ("mix", "iv") is a word, not a
+label. Only the immediately following token counts, so a numeral two words away is not a
+positional reference. A range counts up and stays under four digits a side, so a date
+("12-07"), a time span ("9-5"), a degenerate run ("1-1"), and a year range are not
+checklist ranges.
 
 Blocking nouns (the work-unit words of §1 and the host#16 checklist terms of §1a):
 
@@ -211,8 +217,8 @@ Should block:
 - `## Phase 1: Setup`
 - `feat: phase 2 of auth refactor`
 - `Sprint 3 backlog`
-- `Phase IV, data migration` (multi-letter uppercase Roman)
-- `boxes 4-8 blocked` (host#16 checklist range)
+- `Phase IV, data migration` (uppercase Roman of ordinal value, <= XXXIX)
+- `boxes 4-8 blocked` (host#16 ascending checklist range)
 
 Should warn, not block (the §1b advisory nouns):
 
@@ -236,8 +242,11 @@ warn rather than block; the disposition was measured against a real code corpus
 YAML and Dockerfiles.
 
 Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same
-tell and are flagged in plan and design markdown; ordinary numbered-list items, changelog
-version headings, and a four-digit year heading (`## 2024`) are excluded.
+tell and are flagged in plan and design markdown; excluded are ordinary numbered-list
+items, version headings (two or more dots), a four-digit year heading (`## 2024`), and a
+bare integer of three or more digits, which reads as a status code or numeric key
+(`## 404`, `## 200`) rather than a section ordinal. A short ordinal (`## 3`, `## 12`) and
+a dotted milestone code (`## 5.5`) still flag.
 
 ### Two severities: flag and warn
 
@@ -245,7 +254,7 @@ The matcher reports at two severities. A **flag** (exit 1) is a confirmed tell a
 
 Flag, in addition to the noun-gated and bare-numeral-header patterns above:
 
-- **Leading label prefix** — a bare numeral used as a name at the start of a subject line, markdown header, or comment, followed by a colon and whitespace: `5.5: exec/pty tools`, `// 5.5: the pty exec tool`, `## 5.5: error handling`. The colon-then-space requirement separates a label from a clock time (`5:30 standup` does not match).
+- **Leading label prefix** — a bare numeral used as a name at the start of a subject line, markdown header, or comment, followed by a colon and whitespace: `5.5: exec/pty tools`, `// 5.5: the pty exec tool`, `## 5.5: error handling`. The colon-then-space requirement separates a label from a clock time (`5:30 standup` does not match), and a bare integer of three or more digits is skipped as a status code or numeric key (`// 200: OK`, `// 404: not found` do not flag); the dotted form (`5.5:`) and a short integer (`3:`) still flag.
 
 Warn — advisory forms that collide too readily with ordinary use to block:
 
@@ -269,7 +278,7 @@ Traceability and idiom are not in tension: `fixes #NN` is already allowlisted, s
 
 The escape hatch carries an obligation: cite issue numbers that exist. A bare `#N` taken from a private task tracker is the same code-as-name tell dressed as a GitHub reference — and worse, it renders as a resolvable link that resolves to nothing. The offline matcher cannot tell a real `#N` from a fake one (that would require resolving the number against the repository's live issue set), so a fake reference passes the linter by design. `#N` is not auto-vetted; verifying that the number resolves is review discipline, not a gate the *offline hook* provides.
 
-The `LEXICON` (issue #13) supplies the gate that the offline hook cannot. A project declares its legitimate tell-shaped tokens there — each a full contextual phrase, masked before detection; a tracker reference carries its backing URL as required provenance. Because a sound, declarable escape now exists, the `# host-lint: strict` directive escalates the identifier/reference warn tier to a blocking **flag**: an undeclared tell-shaped token is no longer merely advisory. Three guards keep the escape honest — a bare numeral master key is refused, a phrase that is *itself* a flag-tier tell is refused (you rename it, you do not declare it), and a tracker reference with no URL is refused: a bare `#N`/`owner/repo#N`, or a `PROJ-NNNN` whose project key the project opted into gating with `# host-lint: jira-key PROJ`. That opt-in is why `PROJ-NNNN` is not gated by default — the shape is identical to standards tokens the host writes (`RFC-2119`, `UTF-8`), which must stay plain vocabulary unless a project deliberately declares the key. URL liveness is re-derived by a network-having lane (`host-lint lexicon --check-urls`), not the offline hook — the offline caveat above still stands for the hook itself, which is why the lexicon, not the matcher, carries the provenance.
+The `LEXICON` (issue #13) supplies the gate that the offline hook cannot. A project declares its legitimate tell-shaped tokens there — each a full contextual phrase, masked before detection; a tracker reference carries its backing URL as required provenance. Because a sound, declarable escape now exists, the `# host-lint: strict` directive escalates the identifier/reference warn tier to a blocking **flag**: an undeclared tell-shaped token is no longer merely advisory. Guards keep the escape honest, so the lexicon legitimizes vocabulary but never silences a real tell (host `call/0006`): a bare numeral master key is refused; a phrase that is *itself* a flag-tier tell, or that *carries* a position noun (`phase`, `section`) or a bare review code (`F1`, `R1`) as a standalone word, is refused — you rename it, you do not declare it, because masking such a token would blank the noun or code out of a real `<noun> N` / `review <code>` tell and silence the whole class; and a tracker reference with no URL is refused: a bare `#N`/`owner/repo#N`, or a `PROJ-NNNN` whose project key the project opted into gating with `# host-lint: jira-key PROJ`. That opt-in is why `PROJ-NNNN` is not gated by default — the shape is identical to standards tokens the host writes (`RFC-2119`, `UTF-8`), which must stay plain vocabulary unless a project deliberately declares the key. URL liveness is re-derived by a network-having lane (`host-lint lexicon --check-urls`), not the offline hook — the offline caveat above still stands for the hook itself, which is why the lexicon, not the matcher, carries the provenance.
 
 A third escape, for markdown that must reproduce a tell-shaped token **literally** (a retired-ordinal dictionary, an archived citation): a fenced code block whose info string is `host-lint:ignore` is skipped by the naming scan (the prose scan already skips every fenced block). It is the idiomatic markdown info-string pattern (like ` ```mermaid `) — a deliberate, source-visible exemption, never a blanket file mute and never `--no-verify`. Three boundaries keep it honest and are part of the spec: it applies to **markdown only** (in a commit message or code file the fence is literal text and the tell flags); to **`host-lint:ignore`-tagged blocks only** (a regular ` ``` ` block, or one tagged `rust`/`text`, is still scanned); and to **blocks, not inline** (an inline `` `Phase 1` `` still flags, so a tell cannot be laundered by inline-quoting). A tell-shaped token in linted content is legitimate only as a real tracker reference, a `LEXICON` entry, or inside a `host-lint:ignore` block; anything else is reworded out (host `call/0019`).
 
