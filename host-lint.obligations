@@ -1,15 +1,17 @@
 # host-lint.obligations — disposition for every `allium plan` obligation.
-# `host-lifecycle obligations host-lint.allium --tests tests --prove src` checks this
-# is complete (no obligation undispositioned, no stale entry, every test: name real,
-# every kani: harness name present in src).
-#   <id> => test:<name> | structural | waived: <reason> | kani:<harness>
+# `host-lifecycle obligations host-lint.allium --tests tests --prove src --strict-discharge`
+# checks this is complete (no obligation undispositioned, no stale entry, every test:
+# name real, every test: carrying an `exercises=` link to the symbol it drives, every
+# kani: harness name present in src).
+#   <id> => test:<name> exercises=<symbol> | structural | waived: <reason> | kani:<harness>
 # structural = the spec's own `allium check`/`analyse` lane discharges it (field
 # presence, enum comparability, surface shape, declared transition graph).
+# exercises=<symbol> = the named test must call <symbol> (the rule's detector), so the
+# discharge is by behaviour, not name-resolution (plan/0052, plan/0055).
 # kani:<harness> = a Kani proof harness (#[cfg(kani)] in src/lib.rs) discharges it
 # for all bounded inputs — the host-prove code-conformance tier (stronger than a test).
 
 # --- Spec-integrity (covered by the check/analyse lane) ---
-config-default.max_roman_length      => structural
 config-default.strict                => structural
 entity-fields.Invocation             => structural
 entity-fields.Line                   => structural
@@ -23,43 +25,69 @@ surface-actor.LintRun                => structural
 surface-provides.LintRun             => structural
 transition-rejected.Check.status     => structural
 transition-terminal.Check.status     => structural
-invariant.RomanNumeralLength         => structural
 
-# --- Detection rules (behavioural — named property tests) ---
-rule-success.DetectPhaseSynonym               => test:flag_term_followed_by_arabic_numeral_is_detected
-rule-failure.DetectPhaseSynonym.1             => test:flag_term_without_numeral_is_not_detected
-rule-entity-creation.DetectPhaseSynonym.1     => test:flag_term_followed_by_arabic_numeral_is_detected
-rule-success.DetectLeadingCodeLabel           => test:leading_numeral_label_prefix_is_flagged
-rule-failure.DetectLeadingCodeLabel.1         => test:clock_time_is_not_a_label_prefix
-rule-entity-creation.DetectLeadingCodeLabel.1 => test:leading_numeral_label_prefix_is_flagged
-rule-success.DetectBareNumeralHeader          => test:bare_numeral_headers_are_detected
-rule-failure.DetectBareNumeralHeader.1        => test:version_headings_are_not_bare_numeral_headers
-rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_detected
-rule-success.DetectInternalCodeAsName         => kani:verify_review_code_accepts_hash_digit inputs=src/lib.rs
-rule-failure.DetectInternalCodeAsName.1       => kani:verify_review_code_rejects_two_letters inputs=src/lib.rs
-rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns
-rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns
-rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn
-rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns
-rule-success.EscalateUnderStrict              => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag
-rule-failure.EscalateUnderStrict.1            => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag
-rule-success.FlagSubjectDecoration            => test:subject_decoration_escalates_to_flag
-rule-failure.FlagSubjectDecoration.1          => test:body_decoration_stays_advisory
-rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalates_to_flag
+# --- Detection rules (behavioural — each test exercises the detector it discharges) ---
+rule-success.DetectPhaseSynonym               => test:flag_term_followed_by_arabic_numeral_is_detected exercises=check_line
+rule-failure.DetectPhaseSynonym.1             => test:flag_term_followed_by_single_letter_or_lowercase_roman_does_not_block exercises=check_line
+rule-entity-creation.DetectPhaseSynonym.1     => test:phase_synonym_match_is_a_flag exercises=classify_line
+rule-success.DetectLeadingCodeLabel           => test:leading_numeral_label_prefix_is_flagged exercises=check_label_prefix
+rule-failure.DetectLeadingCodeLabel.1         => test:clock_time_is_not_a_label_prefix exercises=check_label_prefix
+rule-entity-creation.DetectLeadingCodeLabel.1 => test:leading_numeral_label_prefix_is_flagged exercises=check_label_prefix
+rule-success.DetectBareNumeralHeader          => test:bare_numeral_headers_are_detected exercises=check_bare_numeral_header
+rule-failure.DetectBareNumeralHeader.1        => test:version_headings_are_not_bare_numeral_headers exercises=check_bare_numeral_header
+rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_detected exercises=check_bare_numeral_header
+# The review/finding/blocker-noun + code FLAG (check_line). The Kani harnesses prove
+# is_review_code's contract — the #N acceptance reachable only through this flag path
+# (check_code_label_prefix strips the '#'), so they discharge this rule, not the warn
+# rule below (plan/0055, S4).
+rule-success.DetectReviewCodeAsName           => kani:verify_review_code_accepts_hash_digit inputs=src/lib.rs
+rule-failure.DetectReviewCodeAsName.1         => kani:verify_review_code_rejects_two_letters inputs=src/lib.rs
+rule-entity-creation.DetectReviewCodeAsName.1 => test:review_noun_followed_by_issue_code_is_detected exercises=check_line
+# The warn-tier leading bare code label ("F1 — …", check_code_label_prefix).
+rule-success.DetectInternalCodeAsName         => test:leading_code_label_warns exercises=check_code_label_prefix
+rule-failure.DetectInternalCodeAsName.1       => test:code_without_a_delimiter_is_not_a_label exercises=check_code_label_prefix
+rule-entity-creation.DetectInternalCodeAsName.1 => test:leading_code_label_warns exercises=check_code_label_prefix
+rule-success.DetectBareNumeralLabel           => test:bare_dotted_code_in_prose_warns exercises=check_warn
+rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_not_warn exercises=check_warn
+rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns exercises=check_warn
+rule-success.EscalateUnderStrict              => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag exercises=scan_text_with_allow_strict
+rule-failure.EscalateUnderStrict.1            => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag exercises=scan_text_with_allow_strict
+rule-success.FlagSubjectDecoration            => test:subject_decoration_escalates_to_flag exercises=escalate_subject_decoration
+rule-failure.FlagSubjectDecoration.1          => test:body_decoration_stays_advisory exercises=escalate_subject_decoration
+rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalates_to_flag exercises=escalate_subject_decoration
 
-# --- Verdict lifecycle (behavioural — exit-code transitions) ---
-transition-edge.Check.scanning.blocked  => test:flag_wins_over_warn_on_the_same_line
-transition-edge.Check.scanning.advisory => test:bare_dotted_code_in_prose_warns
-transition-edge.Check.scanning.clean    => test:clean_prose_emits_no_tells
-invariant.FlagBeatsWarn                 => test:flag_wins_over_warn_on_the_same_line
-rule-success.VerdictBlocked             => test:flag_wins_over_warn_on_the_same_line
-rule-failure.VerdictBlocked.1           => test:clean_prose_emits_no_tells
-rule-success.VerdictAdvisory            => test:bare_dotted_code_in_prose_warns
-rule-failure.VerdictAdvisory.1          => test:flag_wins_over_warn_on_the_same_line
-rule-success.VerdictClean               => test:clean_prose_emits_no_tells
-rule-failure.VerdictClean.1             => test:bare_dotted_code_in_prose_warns
-rule-success.RecordFlag                 => test:flag_wins_over_warn_on_the_same_line
-rule-failure.RecordFlag.1               => test:flag_wins_over_warn_on_the_same_line
-rule-success.RecordWarn                 => test:bare_dotted_code_in_prose_warns
-rule-failure.RecordWarn.1               => test:flag_wins_over_warn_on_the_same_line
+# --- Verdict lifecycle (behavioural — the matches->exit-code aggregation) ---
+# All discharged by one test that exercises `verdict_code` over a match set (flag->1,
+# warn->3, empty->0, flag-beats-warn, and the negative: warn-only never reaches the
+# blocking code). The previous single-line classifier tests did not touch the
+# aggregation (plan/0055, S2).
+transition-edge.Check.scanning.blocked  => test:verdict_code_aggregates_severities exercises=verdict_code
+transition-edge.Check.scanning.advisory => test:verdict_code_aggregates_severities exercises=verdict_code
+transition-edge.Check.scanning.clean    => test:verdict_code_aggregates_severities exercises=verdict_code
+invariant.FlagBeatsWarn                 => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-success.VerdictBlocked             => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-failure.VerdictBlocked.1           => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-success.VerdictAdvisory            => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-failure.VerdictAdvisory.1          => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-success.VerdictClean               => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-failure.VerdictClean.1             => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-success.RecordFlag                 => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-failure.RecordFlag.1               => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-success.RecordWarn                 => test:verdict_code_aggregates_severities exercises=verdict_code
+rule-failure.RecordWarn.1               => test:verdict_code_aggregates_severities exercises=verdict_code
 rule-success.StartScan                  => waived: lifecycle entry — a scan unconditionally enters `scanning`; no observable assertion
+
+# --- Deliberately spec-out-of-scope engine behaviour (plan/0055, S5) ---
+# The following host-lint behaviours are real and tested, but not modelled as rules in
+# host-lint.allium, so no obligation is derived for them. They are recorded here so the
+# absence is auditable rather than silent. Each names its test:
+#   Note severity (whole-document prose diagnosis): structural_diagnoses_are_advisory_notes
+#   prose occurrence-mapping (line:col):            decoration_occurrences_map_to_distinct_lines_and_columns
+#   LEXICON G1 master-key guard:                    lexicon_guard_g1_rejects_a_bare_master_key
+#   LEXICON G2 no-laundering guard:                 lexicon_guard_g2_rejects_a_bare_position_noun
+#   LEXICON citation gate:                          lexicon_guard_citation_gates_tracker_refs
+#   mask_allowed masking:                           allowed_phrase_suppresses_its_own_flag
+#   gather discovery:                               gather_surfaces_recurring_novel_shape_and_skips_noise
+#   host-lint:ignore fence quarantine:              unclosed_ignore_fence_fails_loud
+# The prose tropes are modelled in host-grammar.allium; the rest are host-lint-specific
+# and may be modelled in a later spec pass.

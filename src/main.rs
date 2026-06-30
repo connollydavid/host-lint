@@ -606,10 +606,5 @@ fn main() {
         output_text(&matches);
     }
 
-    if matches.iter().any(|m| m.severity == Severity::Flag) {
-        process::exit(1);
-    }
-    if matches.iter().any(|m| m.severity == Severity::Warn) {
-        process::exit(3);
-    }
+    process::exit(host_lint::verdict_code(&matches));
 }

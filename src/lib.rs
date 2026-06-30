@@ -105,6 +105,22 @@ pub fn is_ci_file(path: &str) -> bool {
     CI_PATTERNS.iter().any(|p| lower.contains(p))
 }
 
+/// The process exit code a set of matches settles to: `1` if any match is a blocking
+/// `Flag`, else `3` if any is an advisory `Warn`, else `0` (a `Note` never gates).
+/// This is the verdict-lifecycle aggregation the CLI exits on — flag beats warn, a
+/// warn-only set never reaches the blocking code. Defined here as a testable unit so
+/// the verdict obligations are discharged by a test that exercises the aggregation,
+/// not a single-line classifier (plan/0055, S2).
+pub fn verdict_code(matches: &[Match]) -> i32 {
+    if matches.iter().any(|m| m.severity == Severity::Flag) {
+        1
+    } else if matches.iter().any(|m| m.severity == Severity::Warn) {
+        3
+    } else {
+        0
+    }
+}
+
 /// Re-exported from `host-grammar` so the checker (here) and the generator
 /// (`host-lifecycle`) share one definition of a numeral.
 pub use host_grammar::is_numeral;

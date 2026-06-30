@@ -4,7 +4,6 @@
 -- equations live in host-grammar.allium.
 
 config {
-    max_roman_length: Integer = 4
     -- The committed LEXICON `strict` directive. When set, the naming-warn tier
     -- escalates to a block (a declarable lexicon makes an undeclared tell a hard
     -- signal). Default off, so a project without a lexicon is unaffected.
@@ -43,6 +42,7 @@ entity Line {
     has_leading_code_label: Boolean
     has_bare_numeral_header: Boolean
     has_internal_code_as_name: Boolean
+    has_review_code_name: Boolean
     has_bare_numeral_label: Boolean
     has_decoration: Boolean
 }
@@ -96,6 +96,15 @@ rule DetectBareNumeralHeader {
     when: line: Line.created
     requires: line.is_markdown and line.has_bare_numeral_header
     ensures: Match.created(line: line, term: "bare-numeral-header", severity: flag)
+}
+
+-- A review/finding/blocker noun naming a tracking code ("review B1", "addresses
+-- finding #7") is a flag-tier tell: the numbered code is the work-unit name.
+-- Distinct from DetectInternalCodeAsName, the warn-tier *leading* bare code label.
+rule DetectReviewCodeAsName {
+    when: line: Line.created
+    requires: line.has_review_code_name
+    ensures: Match.created(line: line, term: "review-code", severity: flag)
 }
 
 -- Warn-tier (exit 3, advisory). Flag wins: a warn-tier match defers when a
@@ -175,10 +184,9 @@ rule VerdictClean {
 
 -- === Invariants ===
 
-invariant RomanNumeralLength {
-    for numeral in Numerals where numeral.kind = roman:
-        numeral.value.length <= config.max_roman_length
-}
+-- (The former RomanNumeralLength invariant is removed: the blocking lane no longer
+-- admits a length-bounded Roman numeral — it takes a multi-letter uppercase Roman
+-- of any length, or none — so a length cap has no subject. plan/0055, call/0037.)
 
 invariant FlagBeatsWarn {
     -- a blocked verdict is never downgraded; flag-tier wins regardless of warns

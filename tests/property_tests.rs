@@ -241,7 +241,9 @@ proptest! {
     #[test]
     fn review_noun_followed_by_issue_code_is_detected(
         term in "review|finding|blocker",
-        digits in "[0-9]{1,4}"
+        // brace-free quantifier: the strict-discharge scanner mis-parses a braced
+        // repetition in a proptest param regex when it resolves an exercises= link.
+        digits in "[0-9]+"
     ) {
         let line = format!("addresses {} #{}", term, digits);
         prop_assert!(check_line(&line).is_some(), "line: {}", line);
@@ -445,6 +447,38 @@ fn issue_10_warn_cases() {
             line
         );
     }
+}
+
+// plan/0055 (S2): the verdict-lifecycle aggregation, discharged by a test that
+// exercises verdict_code over a match set rather than a single classified line.
+#[test]
+fn verdict_code_aggregates_severities() {
+    let m = |severity| host_lint::Match {
+        file: "x".into(),
+        line: 1,
+        col: 0,
+        text: String::new(),
+        term: String::new(),
+        severity,
+        cite: String::new(),
+    };
+    assert_eq!(host_lint::verdict_code(&[]), 0, "empty is clean");
+    assert_eq!(host_lint::verdict_code(&[m(Severity::Note)]), 0, "a note never gates");
+    assert_eq!(host_lint::verdict_code(&[m(Severity::Warn)]), 3, "warn-only is advisory");
+    assert_eq!(host_lint::verdict_code(&[m(Severity::Flag)]), 1, "a flag blocks");
+    assert_eq!(host_lint::verdict_code(&[m(Severity::Warn), m(Severity::Flag)]), 1, "flag beats warn");
+    // The negative (the RecordFlag.1 property): a warn-only set never reaches the
+    // blocking code — saw_flag stays false.
+    assert_ne!(host_lint::verdict_code(&[m(Severity::Warn), m(Severity::Note)]), 1);
+}
+
+// plan/0055 (S6): an entity-creation obligation should assert the produced Match's
+// shape (its severity and term), not merely that a detector returned Some.
+#[test]
+fn phase_synonym_match_is_a_flag() {
+    let (sev, term) = classify_line("## Phase 2: setup", true).expect("a phase synonym is a tell");
+    assert_eq!(sev, Severity::Flag, "a phase synonym produces a blocking flag");
+    assert_eq!(term, "phase", "the matched term is the tell noun");
 }
 
 // plan/0055 (V3): VOCABULARY.md is the rule source; its canonical term lists must
