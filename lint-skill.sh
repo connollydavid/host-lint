@@ -42,9 +42,16 @@ fi
 
 # name-format — a slug that matches the skill's directory
 echo "name-format"
-dirname=$(basename "$(dirname "$SKILL_MD")")
-if [ "$dirname" = "." ]; then
-    dirname=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+skill_parent=$(cd "$(dirname "$SKILL_MD")" && pwd)
+dirname=$(basename "$skill_parent")
+# A materialized worktree lives at software/<name>/main/ (the reproducibility-anchor
+# layout), so the directory holding SKILL.md is the worktree line "main", not the
+# skill name. Use the parent directory's name in that case, so the gate passes in
+# the worktree exactly as it does on an installed skill (.claude/skills/<name>/) or
+# a repo-named CI checkout. A bare "main" elsewhere is not a skill home, so this only
+# affects the materialized layout.
+if [ "$dirname" = "main" ]; then
+    dirname=$(basename "$(dirname "$skill_parent")")
 fi
 if echo "$name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
     if [ ${#name} -le 64 ]; then
