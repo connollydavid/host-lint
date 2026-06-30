@@ -447,6 +447,30 @@ fn issue_10_warn_cases() {
     }
 }
 
+// plan/0055 (V3): VOCABULARY.md is the rule source; its canonical term lists must
+// equal the code consts, so the document cannot silently drift from what ships.
+#[test]
+fn vocabulary_term_lists_match_the_code() {
+    let doc = fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/VOCABULARY.md"))
+        .expect("read VOCABULARY.md");
+    let canonical = |prefix: &str| -> std::collections::BTreeSet<String> {
+        doc.lines()
+            .find(|l| l.trim_start().starts_with(prefix))
+            .unwrap_or_else(|| panic!("VOCABULARY.md is missing the '{prefix}' canonical line"))
+            .trim_start()
+            .strip_prefix(prefix)
+            .unwrap()
+            .split_whitespace()
+            .map(str::to_string)
+            .collect()
+    };
+    let code = |terms: &[&str]| -> std::collections::BTreeSet<String> {
+        terms.iter().map(|s| s.to_string()).collect()
+    };
+    assert_eq!(canonical("flag:"), code(host_lint::FLAG_TERMS), "VOCABULARY.md flag list != FLAG_TERMS");
+    assert_eq!(canonical("warn:"), code(host_lint::WARN_ORDINAL_TERMS), "VOCABULARY.md warn list != WARN_ORDINAL_TERMS");
+}
+
 // plan/0055: the blocking-tier precision recut. The criticals (Roman pronoun/
 // letter false-flags, the LEXICON laundering covered elsewhere), the verb-term
 // demotion, and the year/status guards.

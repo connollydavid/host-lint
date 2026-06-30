@@ -17,33 +17,53 @@ The last pair of rows carry the two hardest lessons: artifacts state claims abou
 
 Reference for an anti-slop linter or commit hook. Two lists that must not be confused: the numbered-segment vocabulary an LLM coding agent stamps on plans, comments, and commit subjects (flag), and the established git, code-review, and source-annotation vocabulary that is normal human practice (allow). A third gray-zone list covers terms that are neither, to stop the linter over-matching.
 
-The signature of the flag list is a noun from section 1 followed by a numeral (`Phase 1`, `Step 2`, `Stage II`, `Pass 1 of 3`). The numeral and any "of N" total are the actual tell; the noun alone is not. The framing is cross-model: GPT, Gemini, Claude, Cursor, and Copilot all produce numbered `Phase`/`Step`/`Part` headers, so this is not specific to one assistant.
+The signature of the flag list is a blocking noun from section 1 followed by a numeral (`Phase 1`, `Sprint 3`, `Stage II`, `Wave 2`). The numeral is the actual tell; the noun alone is not. The framing is cross-model: GPT, Gemini, Claude, Cursor, and Copilot all produce numbered `Phase`/`Step`/`Part` headers, so this is not specific to one assistant (the domain-heavy nouns like `Step` warn rather than block, per §1b).
 
 The boundary is register, not the words themselves. These nouns in ordinary descriptive use ("the first pass over the array", "another round of review") are normal English, and the numeral gate allowlists exactly that. The tell is the filing-system register: numbered codes used as names in prose, headers, and commit subjects. People organise sequence with names and ordinary connectives; project-management segmentation as a universal organising principle is a register transplant, and that transplant is why it reads as machine output. The degenerate form — a bare numeral as a name with the noun elided (`## 3`, `## 5.5`, "as decided in 2.1") — is the same tell, not a fix for it.
 
-## 1. Flag list: agentic phase-synonyms
+## 1. Flag list: agentic phase-synonyms (blocking)
 
-True synonyms for "phase" as an ordered, numberable span. Flag when one appears in a heading, a leading comment, or a commit subject and is followed by a numeral.
+True synonyms for "phase" as a unit of project work named by its ordinal position. A
+term blocks (Flag, exit 1) when it appears in a heading, a leading comment, or a commit
+subject immediately followed by a blocking numeral (see §4). The blocking set is the
+high-centrality work-unit words only: each either carries proven ordinal-naming tells in
+real history (`stage` named six work units in this project's own commit log) or has
+near-zero false-positive exposure in real code. The disposition is grounded in a corpus
+measurement, not intuition (see §4 and `call/0037`).
 
-| Term | Register | Note and false-positive risk |
+| Term | Register | Note |
 |---|---|---|
 | Phase | SDLC, PM | canonical; the word usually being substituted |
-| Stage | SDLC, PM, CI/CD | high FP risk: `stage` is a first-class keyword in CI/CD pipelines and Docker multi-stage builds. Gate on numeral, exclude pipeline YAML and Dockerfiles |
-| Step | SDLC, CI/CD | high FP risk: `steps:` is a GitHub Actions and pipeline keyword. Same scoping caveat |
-| Part | general | "Part 1/2"; common plan and commit header |
-| Section | general | code or doc region; weak temporal sense |
-| Pass | compilers | "first/second pass"; legitimate compiler term, gate on numeral |
-| Round | review, general | "round 1/2" of edits or review |
-| Iteration | agile | a sprint by another name; also generic "iteration N" |
-| Sprint | scrum | timeboxed iteration; same slot |
-| Cycle | agile, hardware | release or dev cycle; FP risk with "clock cycle" |
-| Increment | agile, SAFe | shippable output of a sprint; FP risk with the verb "increment" |
+| Stage | SDLC, PM | a unit of staged work; proven in-project tells. CI keyword caveat: excluded in pipeline YAML and Dockerfiles (see §4) |
+| Sprint | scrum | timeboxed iteration; the agile work unit |
+| Iteration | agile | a sprint by another name; generic "iteration N" |
+| Cycle | agile | release or development cycle |
+| Increment | agile, SAFe | shippable output of a sprint |
 | Wave | rollout | "wave 1/2" of a staged rollout |
-| Batch | data | "batch 1/2" of work; FP risk with data-processing batches |
-| Period / Era / Epoch | general, ML | time-spans; `epoch` is an ML training term, restrict to numbered headers |
-| Chapter / Episode / Instalment | narrative | thesaurus synonyms, rare in code, occasional in long plans |
+| Episode / Instalment | narrative | thesaurus synonyms, rare in code, near-zero collision |
 | Leg / Lap | general | a leg or lap of a longer effort; rare in code |
-| Level | games, general | sometimes a stage ("level 1"), often a hierarchy degree instead |
+
+### 1b. Advisory ordinal nouns (warn, not blocking)
+
+These nouns name a unit of work by ordinal far less often than they carry ordinary domain
+meaning. Measured across roughly 35,500 real `.rs` files (`call/0037`), each is
+overwhelmingly domain usage, and because the noun-plus-numeral form is itself a flag it
+could not be escaped through the `LEXICON`, so a false flag would force `--no-verify`.
+They warn (exit 3, advisory); under `# host-lint: strict` an undeclared occurrence still
+escalates to a flag, and the gather lane still surfaces a recurring shape for triage.
+
+| Term | Domain reading (why advisory) |
+|---|---|
+| Section | document, specification, and legal sections — the single largest source |
+| Round | cipher rounds, tournament rounds |
+| Level | log levels, nesting levels, game levels |
+| Step | tutorial and algorithm steps |
+| Part | a part of a whole |
+| Pass | compiler passes |
+| Chapter | book chapters |
+| Epoch | machine-learning training epochs |
+| Batch | batch jobs |
+| Era / Period | historical eras, time periods |
 
 ### 1a. Positional references to a milestone checklist item (host#16)
 
@@ -54,12 +74,12 @@ is re-cut. The matched shapes, with the legitimate quantities that need declarin
 than flagging:
 
 ```host-lint:ignore
-box 7        boxes 4-8        steps 3-5        step 3-5
-decode step 2 (a genuine quantity, declared in the LEXICON, not flagged)
+box 7        boxes 4-8        steps 3-5
 ```
 
-`box`, `boxes`, and `steps` join the flag list, and a numeral or a numeric range (`N-M`)
-after the noun flags. These boundaries stay clean: the literal checklist mark (`- [ ]`,
+`box`, `boxes`, and `steps` (plural) join the flag list, and a numeral or a numeric range
+(`N-M`) after the noun flags. The singular `step` is an advisory noun (§1b), so `step 3-5`
+warns rather than blocks. These boundaries stay clean: the literal checklist mark (`- [ ]`,
 `1. [x]`) carries no noun-plus-numeral; a content-named reference ("the deploy-path box")
 names the item by its content; and the disposition verb "box" ("box an irreducible
 citation") has no trailing numeral.
@@ -157,47 +177,67 @@ These fill nearby slots but are not phase-synonyms. Letting the linter treat the
 
 ## 4. Detection notes
 
-Scope the linter to commit subjects, plan and design markdown headers, and comments in application source. Exclude CI/CD pipeline definitions and Dockerfiles, where `stage` and `step` are reserved keywords.
+Scope the linter to commit subjects, plan and design markdown headers, and comments in application source. Exclude CI/CD pipeline definitions and Dockerfiles, where `stage` and `steps` are reserved keywords.
 
-Core pattern, case-insensitive, word-boundary, numeral-gated. The numeral is an
-Arabic integer, a single-decimal milestone numeral (`5.5`), or a Roman numeral;
-a version-like form with two or more dots (`1.2.3`) is not a numeral:
+The blocking match is case-insensitive and word-boundaried: a blocking noun immediately
+followed by a blocking numeral. The numeral is an Arabic integer, a single-decimal
+milestone numeral (`5.5`), a short checklist range (`4-8`), or a **multi-letter Roman
+numeral written uppercase** (`IV`, `VIII`). A version-like form with two or more dots
+(`1.2.3`) is not a numeral; a **single-letter Roman** (`I`, `C`, `V`) never blocks,
+because it collides with the pronoun "I" and with language and identifier letters; and
+only the immediately following token counts, so a numeral two words away is not a
+positional reference. A four-digit (year-shaped) side is not a checklist range.
+
+Blocking nouns (the work-unit words of §1 and the host#16 checklist terms of §1a):
 
 ```
-\b(phase|stage|step|part|pass|round|iteration|sprint|cycle|increment|wave|batch|section)\s+(\d+(\.\d+)?|[ivxlcdm]+)\b
+\b(phase|stage|sprint|iteration|cycle|increment|wave|episode|instalment|leg|lap|box|boxes|steps)\b
 ```
 
-Heading and leading-comment variants:
+The advisory nouns of §1b (`section`, `round`, `step`, `level`, `part`, `pass`, `chapter`,
+`epoch`, `batch`, `era`, `period`) match the same numeral shape but warn, never block.
 
-```
-^#{1,6}\s*(phase|stage|step|part)\s+\d                  # markdown header
-^\s*(//|#|--|/\*|\*)\s*(phase|stage|step|part)\s+\d     # leading code comment
-\b(phase|stage|step)\s+\d+\s+of\s+\d+\b                 # explicit "N of M"
+The canonical term lists, kept in sync with `FLAG_TERMS` and `WARN_ORDINAL_TERMS` in
+`src/lib.rs` by a test (`vocabulary_term_lists_match_the_code`), so this document cannot
+silently drift from what ships:
+
+```host-lint:ignore
+flag: phase stage sprint iteration cycle increment wave episode instalment leg lap box boxes steps
+warn: pass round step level part section chapter epoch batch era period
 ```
 
-Should match:
+Should block:
 
 - `## Phase 1: Setup`
-- `// Pass 1: tokenize`
-- `Step 3 of 5`
 - `feat: phase 2 of auth refactor`
-- `Stage II, data migration`
+- `Sprint 3 backlog`
+- `Phase IV, data migration` (multi-letter uppercase Roman)
+- `boxes 4-8 blocked` (host#16 checklist range)
 
-Must not match:
+Should warn, not block (the §1b advisory nouns):
+
+- `// Pass 1: tokenize`
+- `see section 3 of the spec`
+- `train for epoch 0`
+
+Must not match (clean):
 
 - `feat: add parser`
-- `nit: rename uc to userCount`
-- `fix(api): correct fee calculation`
-- `TODO: handle null input`
-- `chore: bump deps`
-- `WIP: draft, do not merge`
-- `// FIXME: race condition on shutdown`
+- `in this pass I fixed the bug` (the pronoun "I" is not a Roman numeral)
+- `port the lexer to C` (a single language letter is not a Roman numeral)
+- `step into 3 dimensions` (a numeral two words away)
 - `increment the retry counter` (verb, no numeral)
 - `the first pass over the array` (descriptive prose, no numeral)
 
-The numeral gate removes most verb and descriptive-noun collisions (`increment`, `cycle`, `pass`, `level`). Residual risk sits with `stage`/`step` in infra config and `epoch` in ML code; the scoping rule above handles those.
+The blocking set holds only the high-centrality work-unit words, so the verb and
+descriptive-noun collisions (`round`, `level`, `step`, `pass`, `section`, `epoch`, ...)
+warn rather than block; the disposition was measured against a real code corpus
+(`call/0037`). The CI-keyword scoping above still excludes `stage`/`steps` in pipeline
+YAML and Dockerfiles.
 
-Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same tell and can be flagged at low severity in plan and design markdown; exclude ordinary numbered-list items and changelog version headings.
+Bare-numeral headers (`^#{1,6}\s*\d+(\.\d+)?\s*$`) are the noun-elided form of the same
+tell and are flagged in plan and design markdown; ordinary numbered-list items, changelog
+version headings, and a four-digit year heading (`## 2024`) are excluded.
 
 ### Two severities: flag and warn
 
@@ -207,8 +247,9 @@ Flag, in addition to the noun-gated and bare-numeral-header patterns above:
 
 - **Leading label prefix** — a bare numeral used as a name at the start of a subject line, markdown header, or comment, followed by a colon and whitespace: `5.5: exec/pty tools`, `// 5.5: the pty exec tool`, `## 5.5: error handling`. The colon-then-space requirement separates a label from a clock time (`5:30 standup` does not match).
 
-Warn — the degenerate form where the noun is elided and the bare numeral floats free, which collides with version strings and quantities, so it is advisory rather than blocking:
+Warn — advisory forms that collide too readily with ordinary use to block:
 
+- **Advisory ordinal noun + numeral** — one of the §1b domain-heavy nouns (`section`, `round`, `step`, `level`, `part`, `pass`, `chapter`, `epoch`, `batch`, `era`, `period`) immediately followed by a blocking numeral (`section 3`, `round 2`, `epoch 0`). Measured as overwhelmingly domain usage in real code (`call/0037`), so the noun warns rather than blocks; under `# host-lint: strict` an undeclared one escalates to a flag.
 - **Filing-code noun + numeral** — `work-item`, `workitem`, or `wi` followed by a numeral (`work-item 5.3`). These nouns are not phase-synonyms; the warn catches the milestone-code register without hard-flagging ordinary use.
 - **Bare dotted code** — a standalone `N.N` token used as a name (`as decided in 2.1`, `exec tools (5.5)`, `the tools arrive in 5.3`). A token carrying a letter (`v2.1`) is a version and is skipped; a trailing `%` or a following unit (`5.5 seconds`) marks a quantity and is skipped; a preceding version or cross-reference word (`python 3.11`, `figure 2.1`) is skipped. A preceding **all-caps designator** of two or more letters (`NT 3.1`, `SDK 2.1`, `DOS 6.2`) reads as a product or version name and is skipped, while a Title-case or lowercase noun before the decimal (`Decision 2.1`, `in 2.1`) still warns. The warn is deliberately recall-biased — it will still warn on some version or figure references (`upgrade to 2.1`), which is acceptable because it only asks the author to reconsider.
 

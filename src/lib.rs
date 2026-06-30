@@ -8,7 +8,7 @@ use std::process::Command;
 // (`stage` named six work units in this repo's own history) or near-zero
 // false-positive exposure in real code. Domain-heavy words (section, round, step,
 // epoch, ...) live in the advisory tier below, not here.
-const FLAG_TERMS: &[&str] = &[
+pub const FLAG_TERMS: &[&str] = &[
     "phase", "stage", "iteration", "sprint", "cycle", "increment", "wave",
     "episode", "instalment", "leg", "lap",
     // Positional references to a milestone checklist item (host#16): the
@@ -27,7 +27,7 @@ const FLAG_TERMS: &[&str] = &[
 // immediate adjacency, and each is a complete flag the LEXICON cannot escape. They
 // warn rather than block; strict still escalates an undeclared occurrence to a
 // flag, and the gather lane still surfaces it.
-const WARN_ORDINAL_TERMS: &[&str] = &[
+pub const WARN_ORDINAL_TERMS: &[&str] = &[
     "pass", "round", "step", "level", "part",
     "section", "chapter", "epoch", "batch", "era", "period",
 ];
