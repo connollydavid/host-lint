@@ -132,8 +132,8 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "host-grammar"
-version = "0.3.0"
-source = "git+https://github.com/connollydavid/host-grammar?rev=9d51468ab1f0a7e253cd2ee7d149d7325e65f47b#9d51468ab1f0a7e253cd2ee7d149d7325e65f47b"
+version = "0.4.0"
+source = "git+https://github.com/connollydavid/host-grammar?rev=9470b81c9c851b0fedc872203437ea0de60b7f62#9470b81c9c851b0fedc872203437ea0de60b7f62"
 dependencies = [
  "pulldown-cmark",
  "unicode-segmentation",
@@ -141,7 +141,7 @@ dependencies = [
 
 [[package]]
 name = "host-lint"
-version = "0.10.4"
+version = "0.11.0"
 dependencies = [
  "host-grammar",
  "proptest",

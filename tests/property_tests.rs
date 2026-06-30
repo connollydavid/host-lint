@@ -82,7 +82,10 @@ proptest! {
     #[test]
     fn flag_term_followed_by_roman_numeral_is_detected(
         term in "phase|stage|step|part|pass|round",
-        roman in "[IVXLCDM]{1,4}"
+        // canonical Roman numerals only: host-grammar's is_numeral validates the
+        // form, so a non-canonical run like "IIII" is not a numeral (and a term
+        // followed by it is not a positional tell)
+        roman in "I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XL|L|XC|C|CD|D|CM|M"
     ) {
         let line = format!("{} {}", term, roman);
         prop_assert!(check_line(&line).is_some(), "line: {}", line);

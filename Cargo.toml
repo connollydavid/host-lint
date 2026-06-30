@@ -1,12 +1,12 @@
 [package]
 name = "host-lint"
-version = "0.10.4"
+version = "0.11.0"
 edition = "2021"
 description = "Detect phase-synonym agentic tells in commits, headers, and comments"
 license = "Unlicense"
 
 [dependencies]
-host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "9d51468ab1f0a7e253cd2ee7d149d7325e65f47b" }
+host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "9470b81c9c851b0fedc872203437ea0de60b7f62" }
 
 # `cargo kani` sets cfg(kani) for the #[cfg(kani)] proof harnesses in src/lib.rs.
 # Declare it a known cfg so the normal build doesn't warn. Lints don't affect
