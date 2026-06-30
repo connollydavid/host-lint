@@ -13,7 +13,7 @@ ok() { PASS=$((PASS+1)); TOTAL=$((TOTAL+1)); echo "  PASS: $1"; }
 bad() { FAIL=$((FAIL+1)); TOTAL=$((TOTAL+1)); echo "  FAIL: $1"; }
 
 # Assert the exact exit code of a --stdin scan, so a flag (1) -> warn (3) regression
-# is caught rather than passing on any nonzero (plan/0055, V9).
+# is caught rather than passing on any nonzero (plan/0055).
 flag()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 1 ] && ok "flag: $1"  || bad "flag (want rc=1, got $rc): $1"; }
 warn()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 3 ] && ok "warn: $1"  || bad "warn (want rc=3, got $rc): $1"; }
 clean() { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 0 ] && ok "clean: $1" || bad "clean (want rc=0, got $rc): $1"; }
@@ -328,7 +328,7 @@ printf 'see Decision 2.4 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$
 unset GIT_DIR
 rm -rf "$LEX"
 
-# --- host-lint:ignore naming fence (plan/0055, V8) ---
+# --- host-lint:ignore naming fence (plan/0055) ---
 echo ""
 echo "--- host-lint:ignore naming fence ---"
 fence_dir="$tmpdir/fence"; mkdir -p "$fence_dir"
@@ -344,7 +344,7 @@ printf 'intro\n```host-lint:ignore\nPhase 2 ships here\n' > "$fence_dir/unclosed
 $BINARY "$fence_dir/unclosed.md" >/dev/null 2>&1 && rc=0 || rc=$?
 [ "$rc" -eq 1 ] && ok "ignore-fence: unclosed fence fails loud" || bad "ignore-fence: unclosed fence should fail loud (rc=$rc)"
 
-# --- pre-commit hook end-to-end (plan/0055, V8): scans the staged blob, fails closed ---
+# --- pre-commit hook end-to-end (plan/0055): scans the staged blob, fails closed ---
 echo ""
 echo "--- pre-commit hook end-to-end ---"
 HOOK_SCRIPT="$(cd "$(dirname "$0")" && pwd)/pre-commit"
@@ -363,7 +363,7 @@ if [ -f "$HOOK_SCRIPT" ]; then
     (cd "$hookrepo" && git add plan.md && git -c user.name=t -c user.email=t@t commit -q -m "add plan" 2>/dev/null) \
         && bad "hook: a staged tell should block the commit" || ok "hook: a staged tell blocks the commit"
     # the staged-blob property: stage the tell, then edit it out of the working tree
-    # unstaged — the hook must still block on the staged bytes (plan/0055, V4)
+    # unstaged — the hook must still block on the staged bytes (plan/0055)
     (cd "$hookrepo" && printf 'clean now\n' > plan.md \
         && git -c user.name=t -c user.email=t@t commit -q -m "commit staged tell" 2>/dev/null) \
         && bad "hook: must lint the staged blob, not the clean working tree" || ok "hook: lints the staged blob, not the working tree"

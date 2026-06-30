@@ -449,7 +449,7 @@ fn issue_10_warn_cases() {
     }
 }
 
-// plan/0055 (S2): the verdict-lifecycle aggregation, discharged by a test that
+// plan/0055: the verdict-lifecycle aggregation, discharged by a test that
 // exercises verdict_code over a match set rather than a single classified line.
 #[test]
 fn verdict_code_aggregates_severities() {
@@ -472,7 +472,7 @@ fn verdict_code_aggregates_severities() {
     assert_ne!(host_lint::verdict_code(&[m(Severity::Warn), m(Severity::Note)]), 1);
 }
 
-// plan/0055 (S6): an entity-creation obligation should assert the produced Match's
+// plan/0055: an entity-creation obligation should assert the produced Match's
 // shape (its severity and term), not merely that a detector returned Some.
 #[test]
 fn phase_synonym_match_is_a_flag() {
@@ -481,7 +481,7 @@ fn phase_synonym_match_is_a_flag() {
     assert_eq!(term, "phase", "the matched term is the tell noun");
 }
 
-// plan/0055 (V3): VOCABULARY.md is the rule source; its canonical term lists must
+// plan/0055: VOCABULARY.md is the rule source; its canonical term lists must
 // equal the code consts, so the document cannot silently drift from what ships.
 #[test]
 fn vocabulary_term_lists_match_the_code() {
@@ -510,7 +510,7 @@ fn vocabulary_term_lists_match_the_code() {
 // demotion, and the year/status guards.
 #[test]
 fn plan_0055_blocking_tier_precision_recut() {
-    // N1: a single-letter Roman (the pronoun "I", language letters) after a
+    // a single-letter Roman (the pronoun "I", language letters) after a
     // tell-noun no longer blocks, and a lowercase token that merely parses as
     // Roman ("mix") is ordinary prose.
     for clean in [
@@ -518,7 +518,7 @@ fn plan_0055_blocking_tier_precision_recut() {
         "the next wave C landed",
         "phase mix in the daw",
     ] {
-        assert_eq!(check_line(clean), None, "should be clean (N1): {clean}");
+        assert_eq!(check_line(clean), None, "should be clean: {clean}");
     }
     // A multi-letter uppercase Roman after a tell-noun is still a real tell.
     assert!(check_line("Phase IV ships the parser").is_some(), "Phase IV should flag");
@@ -559,20 +559,20 @@ fn plan_0055_blocking_tier_precision_recut() {
         assert_eq!(classify_line(clean, false), None, "verb collision clean: {clean}");
     }
 
-    // N3: a year or status markdown heading is not a bare-ordinal tell.
+    // a year or status markdown heading is not a bare-ordinal tell.
     for clean in ["## 2024", "## 2024.01"] {
-        assert_eq!(check_bare_numeral_header(clean), None, "year heading clean (N3): {clean}");
+        assert_eq!(check_bare_numeral_header(clean), None, "year heading clean: {clean}");
     }
     assert!(check_bare_numeral_header("## 3").is_some(), "## 3 should flag");
     assert!(check_bare_numeral_header("## 3.5").is_some(), "## 3.5 should flag");
 
-    // N4: a date or year range is not a checklist range.
-    assert_eq!(check_line("release wave 2024-01 shipped"), None, "date-as-range clean (N4)");
+    // a date or year range is not a checklist range.
+    assert_eq!(check_line("release wave 2024-01 shipped"), None, "date-as-range clean");
     assert!(check_line("wave 4-8 closed").is_some(), "short range still flags");
 
-    // N5: a status-code or numeric-key label is not a milestone label.
+    // a status-code or numeric-key label is not a milestone label.
     for clean in ["// 200: OK response handler", "// 404: not found"] {
-        assert_eq!(check_label_prefix(clean), None, "status-code label clean (N5): {clean}");
+        assert_eq!(check_label_prefix(clean), None, "status-code label clean: {clean}");
     }
     assert!(check_label_prefix("5.5: exec tools").is_some(), "5.5: still flags");
     assert!(check_label_prefix("3: do the thing").is_some(), "3: still flags");
@@ -861,7 +861,7 @@ fn body_decoration_stays_advisory() {
 
 #[test]
 fn body_decoration_with_same_char_in_subject_stays_advisory() {
-    // plan/0055 (P1): the subject and the body both carry an em-dash. The subject
+    // plan/0055: the subject and the body both carry an em-dash. The subject
     // one blocks; the body one must keep its Warn (the old substring test escalated
     // every body occurrence of a character the subject happened to use).
     let input = "classify: refuse adoption — print the case\n\nThe body also leans on a dash — right here.";
@@ -879,7 +879,7 @@ fn body_decoration_with_same_char_in_subject_stays_advisory() {
 
 #[test]
 fn unclosed_ignore_fence_fails_loud() {
-    // plan/0055 (P2): a host-lint:ignore fence with no closing fence used to skip
+    // plan/0055: a host-lint:ignore fence with no closing fence used to skip
     // every later line silently. It must surface an unclosed-fence flag instead.
     let text = "intro line\n```host-lint:ignore\ncited Phase 1 reference\nPhase 2 ships here\n";
     let mut m = Vec::new();
@@ -893,7 +893,7 @@ fn unclosed_ignore_fence_fails_loud() {
 
 #[test]
 fn longer_ignore_fence_wraps_an_inner_code_fence() {
-    // plan/0055 (P4): an inner bare fence shorter than the opening ignore fence does
+    // plan/0055: an inner bare fence shorter than the opening ignore fence does
     // not close the quarantine, so a tell inside a fenced sample within the citation
     // does not leak back to the linter. The longer outer fence closes it.
     let text = "````host-lint:ignore\nExample:\n```\nPhase 2 was the cleanup\n```\n````\nclean tail\n";
@@ -1003,7 +1003,7 @@ fn lexicon_no_laundering_guard_rejects_a_complete_flag() {
     assert!(validate_lexicon_entry(&entry("Step 3", None), &[]).is_err());
 }
 
-// plan/0055 (L1): the worst laundering case the guard exists to stop — a bare
+// plan/0055: the worst laundering case the guard exists to stop — a bare
 // position noun, or a phrase carrying one, masks that noun out of every real
 // "<noun> N" tell repo-wide (and defeats strict). It must be refused even though
 // the bare noun is not itself a complete flag.
@@ -1037,7 +1037,7 @@ fn lexicon_guard_citation_gates_tracker_refs() {
         &[]
     )
     .is_ok());
-    // plan/0055 (L2): a phantom '#999' cited to an unrelated URL that does not
+    // plan/0055: a phantom '#999' cited to an unrelated URL that does not
     // reference 999 is refused — the URL must be provenance, not any link.
     assert!(validate_lexicon_entry(&entry("#999", Some("https://example.com/unrelated")), &[]).is_err());
     assert!(validate_lexicon_entry(&entry("#999", Some("https://github.com/o/r/issues/999")), &[]).is_ok());

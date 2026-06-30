@@ -39,7 +39,7 @@ rule-entity-creation.DetectBareNumeralHeader.1 => test:bare_numeral_headers_are_
 # The review/finding/blocker-noun + code FLAG (check_line). The Kani harnesses prove
 # is_review_code's contract — the #N acceptance reachable only through this flag path
 # (check_code_label_prefix strips the '#'), so they discharge this rule, not the warn
-# rule below (plan/0055, S4).
+# rule below (plan/0055).
 rule-success.DetectReviewCodeAsName           => kani:verify_review_code_accepts_hash_digit inputs=src/lib.rs
 rule-failure.DetectReviewCodeAsName.1         => kani:verify_review_code_rejects_two_letters inputs=src/lib.rs
 rule-entity-creation.DetectReviewCodeAsName.1 => test:review_noun_followed_by_issue_code_is_detected exercises=check_line
@@ -60,7 +60,7 @@ rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalat
 # All discharged by one test that exercises `verdict_code` over a match set (flag->1,
 # warn->3, empty->0, flag-beats-warn, and the negative: warn-only never reaches the
 # blocking code). The previous single-line classifier tests did not touch the
-# aggregation (plan/0055, S2).
+# aggregation (plan/0055).
 transition-edge.Check.scanning.blocked  => test:verdict_code_aggregates_severities exercises=verdict_code
 transition-edge.Check.scanning.advisory => test:verdict_code_aggregates_severities exercises=verdict_code
 transition-edge.Check.scanning.clean    => test:verdict_code_aggregates_severities exercises=verdict_code
@@ -77,7 +77,7 @@ rule-success.RecordWarn                 => test:verdict_code_aggregates_severiti
 rule-failure.RecordWarn.1               => test:verdict_code_aggregates_severities exercises=verdict_code
 rule-success.StartScan                  => waived: lifecycle entry — a scan unconditionally enters `scanning`; no observable assertion
 
-# --- Deliberately spec-out-of-scope engine behaviour (plan/0055, S5) ---
+# --- Deliberately spec-out-of-scope engine behaviour (plan/0055) ---
 # The following host-lint behaviours are real and tested, but not modelled as rules in
 # host-lint.allium, so no obligation is derived for them. They are recorded here so the
 # absence is auditable rather than silent. Each names its test:

@@ -110,7 +110,7 @@ pub fn is_ci_file(path: &str) -> bool {
 /// This is the verdict-lifecycle aggregation the CLI exits on — flag beats warn, a
 /// warn-only set never reaches the blocking code. Defined here as a testable unit so
 /// the verdict obligations are discharged by a test that exercises the aggregation,
-/// not a single-line classifier (plan/0055, S2).
+/// not a single-line classifier (plan/0055).
 pub fn verdict_code(matches: &[Match]) -> i32 {
     if matches.iter().any(|m| m.severity == Severity::Flag) {
         1
@@ -634,7 +634,7 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
         };
         // Offline provenance: the cited URL must actually reference the same number,
         // so a phantom '#999' cited to an unrelated link cannot mask a real
-        // 'review #999' (plan/0055, L2). Liveness (the link resolves) still needs the
+        // 'review #999' (plan/0055). Liveness (the link resolves) still needs the
         // explicit `lexicon --check-urls` lane; a network fetch does not gate by default.
         let number: String = e.phrase.chars().filter(|c| c.is_ascii_digit()).collect();
         if !number.is_empty() && !url.contains(&number) {
@@ -660,7 +660,7 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
     // A phrase that carries a position noun as a standalone word would, when
     // masked, blank that noun out of a real "<noun> N" tell — silencing the whole
     // class repo-wide and defeating strict (the masked line never produces the
-    // warn strict escalates). Refuse it (plan/0055, L1). Over-strict by design: a
+    // warn strict escalates). Refuse it (plan/0055). Over-strict by design: a
     // legitimate multiword phrase that happens to contain a bare position noun is
     // rephrased; safety beats permissiveness here.
     if let Some(noun) = e.phrase.split_whitespace().find_map(|w| {
@@ -789,7 +789,7 @@ pub fn scan_text_with_allow_strict(
     // The open ignore fence's marker char and run length, or None when outside a
     // block. Closing requires a bare fence of the *same* marker at least as long
     // (CommonMark), so an inner code sample with a shorter fence does not leak the
-    // quarantine (plan/0055, P4), and a longer outer fence can wrap it.
+    // quarantine (plan/0055), and a longer outer fence can wrap it.
     let mut ignore_fence: Option<(char, usize)> = None;
     let mut last_line = 0usize;
     for (i, line) in input.lines().enumerate() {
@@ -830,7 +830,7 @@ pub fn scan_text_with_allow_strict(
     }
     // An ignore fence left open at end of file silently skipped every line after it
     // (the fail-open the loop's `continue` produced). Fail loud: report it as a flag
-    // so the file is never reported clean over content it never scanned (plan/0055, P2).
+    // so the file is never reported clean over content it never scanned (plan/0055).
     if ignore_fence.is_some() {
         matches.push(Match {
             file: source.to_string(),
@@ -903,7 +903,7 @@ fn probe_line(input_lc: &str, needle_lc: &str) -> Option<usize> {
 // absolute offset. When the needle is a single alphanumeric word it must sit on
 // word boundaries, so a short tell ("delve") does not map onto a longer word that
 // merely contains it ("delved"); a multi-word or punctuation excerpt matches as-is
-// (plan/0055, P5). Both arguments are already ascii-lowercased.
+// (plan/0055). Both arguments are already ascii-lowercased.
 fn find_tell(haystack: &str, needle: &str, from: usize) -> Option<usize> {
     let single_word = !needle.is_empty()
         && !needle.contains(char::is_whitespace)
@@ -977,7 +977,7 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
             let (line, col) = line_col(input, off);
             // `mask_allowed` blanks each byte of a multibyte char with a space, so an
             // offset valid in `input_lc` can land mid-char in `input`; guard the slice
-            // and fall back to the engine's excerpt rather than panic (plan/0055, P6).
+            // and fall back to the engine's excerpt rather than panic (plan/0055).
             let text = if input.is_char_boundary(off) && input.is_char_boundary(end) {
                 &input[off..end]
             } else {
@@ -988,7 +988,7 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
             // No literal occurrence at or after the cursor. Probe the region past the
             // cursor for the excerpt's first words: a hit is a real occurrence the
             // markdown extractor normalised (a soft line wrap), which the literal find
-            // misses — emit it rather than drop it (plan/0055, P3). Nothing past the
+            // misses — emit it rather than drop it (plan/0055). Nothing past the
             // cursor is a phantom surplus or an exhausted repeat. A first miss with no
             // probe hit is a synthetic whole-document diagnosis (advisory Note). After
             // any fallback, drop further repeats of this key.
@@ -1107,7 +1107,7 @@ fn git_paths(root: &str, extra: &[&str]) -> Result<Vec<String>, String> {
 /// A `decoration` match on the first line is the subject's. The match carries its
 /// line, so escalate by location, not by substring: a body decoration keeps its
 /// advisory `Warn` even when the same character also appears in the subject
-/// (plan/0055, P1 — the old substring test escalated every body occurrence of a
+/// (plan/0055 — the old substring test escalated every body occurrence of a
 /// character the subject happened to use).
 pub fn escalate_subject_decoration(_subject: &str, matches: &mut [Match]) {
     for m in matches.iter_mut() {
