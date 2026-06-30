@@ -83,8 +83,8 @@ rule-success.StartScan                  => waived: lifecycle entry — a scan un
 # absence is auditable rather than silent. Each names its test:
 #   Note severity (whole-document prose diagnosis): structural_diagnoses_are_advisory_notes
 #   prose occurrence-mapping (line:col):            decoration_occurrences_map_to_distinct_lines_and_columns
-#   LEXICON G1 master-key guard:                    lexicon_guard_g1_rejects_a_bare_master_key
-#   LEXICON G2 no-laundering guard:                 lexicon_guard_g2_rejects_a_bare_position_noun
+#   LEXICON master-key guard:                       lexicon_master_key_guard_rejects_a_bare_numeral
+#   LEXICON no-laundering guard:                    lexicon_no_laundering_guard_rejects_a_position_noun
 #   LEXICON citation gate:                          lexicon_guard_citation_gates_tracker_refs
 #   mask_allowed masking:                           allowed_phrase_suppresses_its_own_flag
 #   gather discovery:                               gather_surfaces_recurring_novel_shape_and_skips_noise

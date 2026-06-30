@@ -1,5 +1,7 @@
 #!/bin/bash
-# lint-skill.sh — mechanical conformance gates G1-G8 for SKILL.md
+# lint-skill.sh — mechanical conformance gates for SKILL.md, each named after what
+# it checks: a bare letter-and-number gate label is itself the ordinal tell host-lint
+# detects, so the gates are named by content instead.
 # Exit 0 when every gate succeeds; non-zero on any failure.
 
 set -e
@@ -14,32 +16,32 @@ echo "=== Conformance Gates ==="
 echo "Target: $SKILL_MD"
 echo ""
 
-# G1 — Frontmatter present and parseable
-echo "G1 — Frontmatter present and parseable"
+# frontmatter-parseable — present and valid YAML
+echo "frontmatter-parseable"
 if head -1 "$SKILL_MD" | grep -q '^---$'; then
     # Extract frontmatter block
     fm=$(awk '/^---$/{n++; if(n==2){exit}} n==1{print}' "$SKILL_MD")
     if echo "$fm" | python3 -c "import sys,yaml; yaml.safe_load(sys.stdin)" 2>/dev/null; then
-        pass "G1"
+        pass "frontmatter-parseable"
     else
-        fail "G1: frontmatter does not parse as YAML"
+        fail "frontmatter-parseable: frontmatter does not parse as YAML"
     fi
 else
-    fail "G1: file does not begin with ---"
+    fail "frontmatter-parseable: file does not begin with ---"
 fi
 
-# G2 — Required keys
-echo "G2 — Required keys (name, description)"
+# required-keys — name and description present
+echo "required-keys (name, description)"
 name=$(echo "$fm" | python3 -c "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d.get('name',''))" 2>/dev/null)
 desc=$(echo "$fm" | python3 -c "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d.get('description',''))" 2>/dev/null)
 if [ -n "$name" ] && [ -n "$desc" ]; then
-    pass "G2"
+    pass "required-keys"
 else
-    fail "G2: missing or empty name/description"
+    fail "required-keys: missing or empty name/description"
 fi
 
-# G3 — Name format
-echo "G3 — Name format"
+# name-format — a slug that matches the skill's directory
+echo "name-format"
 dirname=$(basename "$(dirname "$SKILL_MD")")
 if [ "$dirname" = "." ]; then
     dirname=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
@@ -47,27 +49,27 @@ fi
 if echo "$name" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
     if [ ${#name} -le 64 ]; then
         if [ "$name" = "$dirname" ]; then
-            pass "G3"
+            pass "name-format"
         else
-            fail "G3: name '$name' != dirname '$dirname'"
+            fail "name-format: name '$name' != dirname '$dirname'"
         fi
     else
-        fail "G3: name exceeds 64 chars"
+        fail "name-format: name exceeds 64 chars"
     fi
 else
-    fail "G3: name does not match ^[a-z0-9]+(-[a-z0-9]+)*$"
+    fail "name-format: name does not match ^[a-z0-9]+(-[a-z0-9]+)*$"
 fi
 
-# G4 — Description length
-echo "G4 — Description length"
+# description-length — within the portable limit
+echo "description-length"
 if [ ${#desc} -le 1024 ]; then
-    pass "G4"
+    pass "description-length"
 else
-    fail "G4: description exceeds 1024 chars"
+    fail "description-length: description exceeds 1024 chars"
 fi
 
-# G5 — Portable frontmatter only
-echo "G5 — Portable frontmatter only"
+# portable-frontmatter — only the portable keys, or extras documented
+echo "portable-frontmatter"
 keys=$(echo "$fm" | python3 -c "import sys,yaml; d=yaml.safe_load(sys.stdin); print(' '.join(d.keys()))" 2>/dev/null)
 extra=""
 for k in $keys; do
@@ -76,26 +78,26 @@ for k in $keys; do
     fi
 done
 if [ -z "$extra" ]; then
-    pass "G5"
+    pass "portable-frontmatter"
 else
     if grep -q '# Portability notes' "$SKILL_MD"; then
-        pass "G5 (extra keys $extra documented in Portability notes)"
+        pass "portable-frontmatter (extra keys $extra documented in Portability notes)"
     else
-        fail "G5: non-portable keys:$extra (no Portability notes section)"
+        fail "portable-frontmatter: non-portable keys:$extra (no Portability notes section)"
     fi
 fi
 
-# G6 — Body length
-echo "G6 — Body length"
+# body-length — within the readable limit
+echo "body-length"
 body_lines=$(awk '/^---$/{n++; if(n==2){found=1; next}} found{print}' "$SKILL_MD" | wc -l)
 if [ "$body_lines" -le 500 ]; then
-    pass "G6 ($body_lines lines)"
+    pass "body-length ($body_lines lines)"
 else
-    fail "G6: body exceeds 500 lines ($body_lines)"
+    fail "body-length: body exceeds 500 lines ($body_lines)"
 fi
 
-# G7 — References resolve
-echo "G7 — References resolve"
+# references-resolve — every local file reference exists
+echo "references-resolve"
 dangling=0
 skill_dir=$(dirname "$SKILL_MD")
 body=$(awk '/^---$/{n++; if(n==2){found=1; next}} found{print}' "$SKILL_MD")
@@ -120,21 +122,21 @@ for ref in $all_refs; do
         if [ $found -eq 0 ]; then
             # Only flag if it looks like a local file reference (contains .)
             if echo "$ref" | grep -q '\.'; then
-                fail "G7: dangling reference '$ref'"
+                fail "references-resolve: dangling reference '$ref'"
                 dangling=1
             fi
         fi
     fi
 done
 if [ $dangling -eq 0 ]; then
-    pass "G7"
+    pass "references-resolve"
 fi
 
-# G8 — Imperative density
-echo "G8 — Imperative density"
+# imperative-density — every MUST/ALWAYS/NEVER carries a causal reason
+echo "imperative-density"
 imperatives=$(grep -oiE '\b(MUST|ALWAYS|NEVER)\b' "$SKILL_MD" 2>/dev/null || true)
 if [ -z "$imperatives" ]; then
-    pass "G8 (no imperatives)"
+    pass "imperative-density (no imperatives)"
 else
     # Check each imperative has a causal marker in the same paragraph
     bad=0
@@ -148,9 +150,9 @@ else
         fi
     done
     if [ $bad -eq 0 ]; then
-        pass "G8"
+        pass "imperative-density"
     else
-        fail "G8: imperative without causal reason"
+        fail "imperative-density: imperative without causal reason"
     fi
 fi
 

@@ -304,8 +304,8 @@ export GIT_DIR="$LEX/.git"   # redirect repo_root to the temp dir (no .git neede
 $BINARY lexicon add "Windows 3.1" >/dev/null 2>&1 && ok "add vocab" || bad "add vocab"
 $BINARY lexicon add "#7" --url https://github.com/connollydavid/host/issues/7 >/dev/null 2>&1 && ok "add cited ref" || bad "add cited ref"
 # Each guard refuses with exit 1 (the tool, not the prompt, owns the decision).
-$BINARY lexicon add "5.5" >/dev/null 2>&1 && bad "G1 master key rejected" || ok "G1 master key rejected"
-$BINARY lexicon add "Phase 5.5" >/dev/null 2>&1 && bad "G2 laundering rejected" || ok "G2 laundering rejected"
+$BINARY lexicon add "5.5" >/dev/null 2>&1 && bad "master-key guard rejects a bare numeral" || ok "master-key guard rejects a bare numeral"
+$BINARY lexicon add "Phase 5.5" >/dev/null 2>&1 && bad "no-laundering guard rejects a tell" || ok "no-laundering guard rejects a tell"
 $BINARY lexicon add "#999" >/dev/null 2>&1 && bad "citation gate rejected" || ok "citation gate rejected"
 $BINARY lexicon list 2>/dev/null | grep -q "Windows 3.1" && ok "list shows vocab" || bad "list shows vocab"
 $BINARY lexicon --check >/dev/null 2>&1 && ok "--check clean" || bad "--check clean"

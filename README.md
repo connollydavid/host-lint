@@ -208,7 +208,7 @@ cargo test
 # Integration tests (VOCABULARY.md cases)
 ./test-integration.sh ./target/release/host-lint
 
-# Conformance gates (G1-G8 for SKILL.md)
+# Conformance gates (content-named, for SKILL.md)
 ./lint-skill.sh
 ```
 

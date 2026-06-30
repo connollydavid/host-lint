@@ -295,7 +295,7 @@ pub fn check_warn(line: &str) -> Option<String> {
     for i in 0..words.len() {
         let word = words[i];
         let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-        // W3: a demoted verb/measurement ordinal noun immediately followed by a
+        // ordinal-noun rule: a demoted verb/measurement noun immediately followed by a
         // blocking positional numeral ("pass 2", "round 2", "level 3"). Advisory,
         // because the noun's ordinary verb/measurement use is indistinguishable
         // (plan/0055, call/0037). Immediate adjacency only, so "step into 3" and
@@ -312,7 +312,7 @@ pub fn check_warn(line: &str) -> Option<String> {
                 }
             }
         }
-        // W1: a filing-code noun followed by a numeral (within two words).
+        // filing-code-noun rule: a filing-code noun followed by a numeral (within two words).
         if WARN_NOUNS.contains(&clean) {
             for k in 1..=2 {
                 if let Some(next) = words.get(i + k) {
@@ -323,7 +323,7 @@ pub fn check_warn(line: &str) -> Option<String> {
                 }
             }
         }
-        // W2: a bare dotted code ("5.5") used as a name. A token carrying a
+        // bare-dotted-code rule: a bare dotted code ("5.5") used as a name. A token carrying a
         // letter ("v2.1") is a version string and is left alone.
         let ow = if i < orig.len() { orig[i] } else { word };
         if ow.chars().any(|c| c.is_ascii_alphabetic()) {
@@ -609,9 +609,9 @@ fn is_tracker_ref(phrase: &str, jira_keys: &[String]) -> bool {
 ///   - **citation gate** — a bare tracker ref (`#N`, `owner/repo#N`, or an opted-in
 ///     jira-key `PROJ-NNNN`) must carry a URL. `jira_keys` are the project keys the
 ///     LEXICON declared; empty = no jira-key gating, so `RFC-2119` stays vocabulary.
-///   - **G1 master-key** — a non-reference phrase must hold at least one letter, so a
+///   - **master-key guard** — a non-reference phrase must hold at least one letter, so a
 ///     bare `5.5` (which would silently clear every occurrence tree-wide) is refused.
-///   - **G2 no-laundering** — a phrase that is *itself* a flag-tier tell (a phase-synonym
+///   - **no-laundering guard** — a phrase that is *itself* a flag-tier tell (a phase-synonym
 ///     label, say) is refused: you rename a real tell, you do not allow-list it. A phrase
 ///     that merely *carries* a position noun as a standalone word (`phase`, `step`, `review`)
 ///     is refused for the same reason: masking it would blank that noun out of a real

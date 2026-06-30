@@ -665,7 +665,7 @@ fn scan_one(line: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match> {
 #[test]
 fn allowed_phrase_suppresses_its_own_flag() {
     // "wave 1" is a flag (wave is a position noun); masking the phrase clears it.
-    // (Such a bare-flag phrase is not a registerable LEXICON entry — G2 refuses a
+    // (Such a bare-flag phrase is not a registerable LEXICON entry — the no-laundering guard refuses a
     // position noun — but mask_allowed is exercised here as the masking mechanism.)
     assert!(!scan_one("see wave 1 of the rollout", "doc.md", &[]).is_empty());
     assert!(scan_one("see wave 1 of the rollout", "doc.md", &["wave 1"]).is_empty());
@@ -988,7 +988,7 @@ fn lexicon_guard_accepts_legitimate_vocabulary() {
 }
 
 #[test]
-fn lexicon_guard_g1_rejects_a_bare_master_key() {
+fn lexicon_master_key_guard_rejects_a_bare_numeral() {
     // A bare numeral/dotted code with no legitimizing word would clear every
     // occurrence tree-wide — refused.
     assert!(validate_lexicon_entry(&entry("5.5", None), &[]).is_err());
@@ -996,7 +996,7 @@ fn lexicon_guard_g1_rejects_a_bare_master_key() {
 }
 
 #[test]
-fn lexicon_guard_g2_rejects_laundering_a_real_tell() {
+fn lexicon_no_laundering_guard_rejects_a_complete_flag() {
     // The phrase is itself a flag-tier tell — you rename it, you do not allow-list
     // it. (The 4B test tried exactly this: `lexicon add "Phase 5.5"`.)
     assert!(validate_lexicon_entry(&entry("Phase 5.5", None), &[]).is_err());
@@ -1008,7 +1008,7 @@ fn lexicon_guard_g2_rejects_laundering_a_real_tell() {
 // "<noun> N" tell repo-wide (and defeats strict). It must be refused even though
 // the bare noun is not itself a complete flag.
 #[test]
-fn lexicon_guard_g2_rejects_a_bare_position_noun() {
+fn lexicon_no_laundering_guard_rejects_a_position_noun() {
     for laundering in [
         "phase",        // bare flag noun: masks every "phase 2"
         "step",         // bare warn-ordinal noun: masks every "step 2" (and its strict flag)
