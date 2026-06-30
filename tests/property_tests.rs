@@ -524,7 +524,7 @@ fn plan_0055_blocking_tier_precision_recut() {
     assert!(check_line("Phase IV ships the parser").is_some(), "Phase IV should flag");
     assert!(check_line("Stage VIII review").is_some(), "Stage VIII should flag");
 
-    // N2 / demotion (data-grounded, plan/0055): the verb/measurement terms and the
+    // Demotion (data-grounded, plan/0055): the verb/measurement terms and the
     // domain-heavy terms warn, never block. round/level/step/part/pass plus the six
     // measured as domain-heavy in real code (section, chapter, epoch, batch, era,
     // period) are advisory; their two-word-window false flags stay clean.
