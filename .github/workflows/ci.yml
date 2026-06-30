@@ -46,7 +46,7 @@ jobs:
       - name: Add target
         run: rustup target add ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Stage binary
         shell: bash
         run: |
@@ -80,14 +80,16 @@ jobs:
         run: allium analyse host-lint.allium
       - name: allium plan (test obligations)
         run: allium plan host-lint.allium
-      - name: Install host-lifecycle (pinned v0.18.1)
-        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev ca0dfe28cb99c20afe0420bf2f7cb3263550e019
-      - name: Lint obligations (dispositioned, names present, inputs not stale)
-        # Offline gate: every obligation dispositioned + test/proof names present, plus
-        # input-digest staleness (the rungs declare `inputs=src/lib.rs`; the committed
-        # host-lint.obligations.digests ledger must still match). The real proof re-run
-        # is the `kani` job's `--rederive` below (call/0018, #8).
-        run: host-lifecycle obligations host-lint.allium --tests tests --prove src
+      - name: Install host-lifecycle (pinned)
+        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
+      - name: Lint obligations (dispositioned, exercises-linked, inputs not stale)
+        # Offline gate: every obligation dispositioned + test/proof names present, every
+        # test: carrying an `exercises=` link the named test actually references
+        # (--strict-discharge, plan/0052), plus input-digest staleness (the rungs declare
+        # `inputs=src/lib.rs`; the committed host-lint.obligations.digests ledger must
+        # still match). The real proof re-run is the `kani` job's `--rederive` below
+        # (call/0018, #8).
+        run: host-lifecycle obligations host-lint.allium --tests tests --prove src --strict-discharge
 
   kani:
     runs-on: ubuntu-latest
@@ -105,7 +107,7 @@ jobs:
         run: |
           cargo install allium-cli --version 3.4.2
           cargo install --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
-          cargo install --git https://github.com/connollydavid/host-lifecycle --rev ca0dfe28cb99c20afe0420bf2f7cb3263550e019
+          cargo install --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
       - name: Discharge kani rungs by re-derivation (call/0018, #8)
         # The real discharge: re-run each kani: rung via host-prove and gate on PASS,
         # not name-presence. host-prove (on PATH) drives `cargo kani` per harness.
@@ -132,7 +134,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, conformance, test]
+    # Gate the release on the verification ladder too: a tag must not ship with a red
+    # spec (allium) or a red proof (kani), not only a failing build/test (plan/0055, V6).
+    needs: [build, conformance, allium, kani, test]
     permissions:
       contents: write
     steps:
@@ -143,6 +147,19 @@ jobs:
           pattern: host-lint-*
           path: dist
           merge-multiple: true
+      - name: Rebuild the certified x86_64-linux-musl asset in the pinned toolchain
+        # The canonical reproducible artifact is built in the digest-pinned muslrust
+        # image with the locked dependencies and recorded in .host-software (agentic-host),
+        # where `software --verify-build` re-derives it byte-for-byte at re-pin. Build the
+        # published linux-amd64 asset the same way (pinned image + --locked) so the
+        # distributed binary is that artifact, not a stock-runner apt-musl build that can
+        # differ in libc and linker (plan/0055, V7).
+        run: |
+          docker run --rm \
+            -v "$PWD":/src -w /src -e RUSTUP_TOOLCHAIN=stable \
+            clux/muslrust:1.95.0-stable@sha256:15a72a4abf1c593b0bea63a4a8f20e95c1e5a0696d7051eca87b9b850b2d7e43 \
+            sh -c 'CARGO_INCREMENTAL=0 cargo build --release --locked --target x86_64-unknown-linux-musl'
+          cp target/x86_64-unknown-linux-musl/release/host-lint dist/host-lint-linux-amd64
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

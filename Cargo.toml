@@ -10,7 +10,11 @@ host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "9
 
 # `cargo kani` sets cfg(kani) for the #[cfg(kani)] proof harnesses in src/lib.rs.
 # Declare it a known cfg so the normal build doesn't warn. Lints don't affect
-# codegen, so the release artifact stays byte-identical (CI's --verify-build proves it).
+# codegen, so the release artifact stays byte-identical. The canonical artifact is
+# built in the digest-pinned muslrust image with locked deps and recorded in
+# .host-software (agentic-host), where `host-lifecycle software --verify-build`
+# re-derives it byte-for-byte at re-pin; the release CI builds the published
+# linux-amd64 asset by the same pinned recipe so the two match.
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
