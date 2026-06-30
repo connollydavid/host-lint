@@ -487,18 +487,35 @@ fn main() {
     let mut log_flag = false;
     let mut prose_flag = false;
     let mut docs_flag = false;
+    // `--stdin-as <path>` lints content piped on stdin as if it were the file at
+    // <path>: the extension picks the naming semantics and the path drives the
+    // ignore rules, so the pre-commit hook can lint the *staged* blob
+    // (`git show :path`) rather than the working-tree copy.
+    let mut stdin_as: Option<String> = None;
     let mut files: Vec<String> = Vec::new();
 
-    for arg in &args[1..] {
-        match arg.as_str() {
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
             "--stdin" => stdin_flag = true,
             "--json" => json_flag = true,
             "--all" => all_flag = true,
             "--log" => log_flag = true,
             "--prose" => prose_flag = true,
             "--docs" => docs_flag = true,
-            _ => files.push(arg.clone()),
+            "--stdin-as" => {
+                i += 1;
+                match args.get(i) {
+                    Some(p) => stdin_as = Some(p.clone()),
+                    None => {
+                        eprintln!("host-lint: --stdin-as needs a path");
+                        process::exit(2);
+                    }
+                }
+            }
+            other => files.push(other.to_string()),
         }
+        i += 1;
     }
 
     let root = repo_root();
@@ -507,7 +524,20 @@ fn main() {
     let strict = lex.strict;
     let mut matches = Vec::new();
 
-    if stdin_flag {
+    if let Some(path) = &stdin_as {
+        // Lint piped content (the staged blob) as the file at `path`: the naming
+        // lane only, gated exactly as the per-file scan is — CI files and
+        // unscannable extensions produce no naming tells, and `.host-lintignore`
+        // applies to the real path so a sanctioned file (a test fixture, the
+        // append-only record) is not flagged when committed.
+        let mut input = String::new();
+        io::stdin().read_to_string(&mut input).unwrap_or_default();
+        let rel = path.trim_start_matches(['/', '\\']).replace('\\', "/");
+        let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !path_ignored(&rel, &load_ignore(&root)) && !is_ci_file(path) && is_scannable(ext) {
+            scan_text_with_allow_strict(&input, path, allow, strict, &mut matches);
+        }
+    } else if stdin_flag {
         let mut input = String::new();
         io::stdin().read_to_string(&mut input).unwrap_or_default();
         // A stdin title/draft gets both naming and prose tells.

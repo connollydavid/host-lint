@@ -13,21 +13,31 @@ fi
 
 # Git invokes hooks by name with no name argument: pre-commit gets no args,
 # commit-msg gets the message file path as $1. Dispatch on the installed name.
+# Act on the linter's exit code. rc 1 = confirmed tell (block); rc 3 = warning
+# (advisory, print only); rc 0 = clean; anything else (a usage error, a git
+# failure, a panic) fails closed — the gate degrades to a block, never a no-op.
+act_on_rc() {
+    local rc="$1" result="$2" what="$3"
+    case "$rc" in
+        1) echo "$result" >&2; EXIT_CODE=1 ;;
+        3) echo "$result" >&2 ;;
+        0) ;;
+        *) echo "host-lint: error linting $what (exit $rc); failing closed" >&2; EXIT_CODE=1 ;;
+    esac
+}
+
 case "$(basename "$0")" in
     pre-commit)
         staged_files=$(git diff --cached --name-only --diff-filter=ACM)
         if [ -n "$staged_files" ]; then
             while IFS= read -r file; do
-                if [ -f "$file" ]; then
-                    result=$("$BINARY" "$file" 2>&1); rc=$?
-                    # rc 1 = confirmed tell (block); rc 3 = warning (advisory, print only)
-                    if [ $rc -eq 1 ]; then
-                        echo "$result" >&2
-                        EXIT_CODE=1
-                    elif [ $rc -eq 3 ]; then
-                        echo "$result" >&2
-                    fi
-                fi
+                [ -n "$file" ] || continue
+                # Lint the STAGED content (the bytes being committed), not the
+                # working-tree copy: a tell staged then edited out unstaged would
+                # otherwise be committed unseen. `--stdin-as` attributes the blob to
+                # the real path so extension semantics and .host-lintignore apply.
+                result=$(git show ":$file" 2>/dev/null | "$BINARY" --stdin-as "$file" 2>&1); rc=$?
+                act_on_rc "$rc" "$result" "$file"
             done <<< "$staged_files"
         fi
         ;;
@@ -35,13 +45,7 @@ case "$(basename "$0")" in
         msg_file="$1"
         if [ -f "$msg_file" ]; then
             result=$("$BINARY" --stdin < "$msg_file" 2>&1); rc=$?
-            # rc 1 = confirmed tell (block); rc 3 = warning (advisory, print only)
-            if [ $rc -eq 1 ]; then
-                echo "$result" >&2
-                EXIT_CODE=1
-            elif [ $rc -eq 3 ]; then
-                echo "$result" >&2
-            fi
+            act_on_rc "$rc" "$result" "the commit message"
         fi
         ;;
     *)
