@@ -788,6 +788,53 @@ fn body_decoration_stays_advisory() {
 }
 
 #[test]
+fn body_decoration_with_same_char_in_subject_stays_advisory() {
+    // plan/0055 (P1): the subject and the body both carry an em-dash. The subject
+    // one blocks; the body one must keep its Warn (the old substring test escalated
+    // every body occurrence of a character the subject happened to use).
+    let input = "classify: refuse adoption — print the case\n\nThe body also leans on a dash — right here.";
+    let mut m = Vec::new();
+    scan_prose_text(input, "stdin", &[], &mut m);
+    escalate_subject_decoration(input.lines().next().unwrap(), &mut m);
+    let decos: Vec<_> = m.iter().filter(|x| x.term == "decoration").collect();
+    assert!(decos.iter().any(|x| x.line == 1 && x.severity == Severity::Flag), "subject decoration should flag");
+    assert!(decos.iter().any(|x| x.line != 1), "expected a body decoration tell");
+    assert!(
+        decos.iter().filter(|x| x.line != 1).all(|x| x.severity == Severity::Warn),
+        "body decoration should stay advisory"
+    );
+}
+
+#[test]
+fn unclosed_ignore_fence_fails_loud() {
+    // plan/0055 (P2): a host-lint:ignore fence with no closing fence used to skip
+    // every later line silently. It must surface an unclosed-fence flag instead.
+    let text = "intro line\n```host-lint:ignore\ncited Phase 1 reference\nPhase 2 ships here\n";
+    let mut m = Vec::new();
+    scan_text_with_allow_strict(text, "doc.md", &[], false, &mut m);
+    assert!(
+        m.iter().any(|x| x.term == "unclosed-ignore-fence" && x.severity == Severity::Flag),
+        "unclosed ignore fence should fail loud: {:?}",
+        m.iter().map(|x| &x.term).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn longer_ignore_fence_wraps_an_inner_code_fence() {
+    // plan/0055 (P4): an inner bare fence shorter than the opening ignore fence does
+    // not close the quarantine, so a tell inside a fenced sample within the citation
+    // does not leak back to the linter. The longer outer fence closes it.
+    let text = "````host-lint:ignore\nExample:\n```\nPhase 2 was the cleanup\n```\n````\nclean tail\n";
+    let mut m = Vec::new();
+    scan_text_with_allow_strict(text, "doc.md", &[], false, &mut m);
+    assert!(
+        m.is_empty(),
+        "quarantined content leaked: {:?}",
+        m.iter().map(|x| (x.term.clone(), x.line)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn clean_prose_emits_no_tells() {
     // Ordinary technical prose stays silent — no Warn, no density gate.
     let mut m = Vec::new();

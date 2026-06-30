@@ -15,6 +15,10 @@ fn repo_root() -> String {
     env::var("GIT_DIR")
         .ok()
         .and_then(|d| Path::new(&d).parent().and_then(|p| p.to_str()).map(String::from))
+        // A relative GIT_DIR (".git", which `git --git-dir=.git commit` exports)
+        // has an empty parent; an empty root would drop the LEXICON and downgrade
+        // strict to advisory, so fall through to the working directory instead.
+        .filter(|p| !p.is_empty())
         .or_else(|| env::current_dir().ok().and_then(|p| p.to_str().map(String::from)))
         .unwrap_or_default()
 }
@@ -295,12 +299,29 @@ fn serde_json_like(matches: &[Match]) -> String {
 }
 
 fn escape_json(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            // Any other control character (0x00-0x1F) must be escaped, or a line
+            // carrying a raw ESC/NUL byte produces invalid JSON.
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn run_all_files(root: &str, allow: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
-        return;
+        // No resolvable repository root: a clean exit here would be a fail-open
+        // audit that scanned nothing. Fail closed.
+        eprintln!("host-lint: --all needs a repository root (none resolved)");
+        process::exit(2);
     }
     // `--all` audits the repo's tracked files (as the README states). Listing them
     // via `git ls-files` respects `.gitignore` by construction: gitignored build
@@ -496,10 +517,20 @@ fn main() {
         // decoration tell there blocks rather than warns. The body stays advisory.
         escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
     } else if prose_flag {
-        // Treat each file purely as prose for the agentic-tell engine.
+        // `--prose` with no files would scan nothing and exit clean — a fail-open
+        // for a script that trusts the exit code. Require at least one file, and
+        // treat an unreadable file as an error rather than a silent skip.
+        if files.is_empty() {
+            eprintln!("host-lint: --prose needs one or more files");
+            process::exit(2);
+        }
         for f in &files {
-            if let Ok(content) = fs::read_to_string(f) {
-                scan_prose_text(&content, f, allow, &mut matches);
+            match fs::read_to_string(f) {
+                Ok(content) => scan_prose_text(&content, f, allow, &mut matches),
+                Err(e) => {
+                    eprintln!("host-lint: cannot read {f}: {e}");
+                    process::exit(2);
+                }
             }
         }
     } else if all_flag {

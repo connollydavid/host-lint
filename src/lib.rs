@@ -717,13 +717,17 @@ pub fn scan_text_with_allow(
 // most 3 leading spaces; 4+ spaces is an indented code block, not a fence. A bare
 // fence (empty info) closes a block; `host-lint:ignore` as the info opens a region
 // the naming scan skips (call/0019). Used only for markdown sources.
-fn fence_info(line: &str) -> Option<&str> {
+fn fence_info(line: &str) -> Option<(char, usize, &str)> {
     if line.chars().take_while(|c| *c == ' ').count() >= 4 {
         return None;
     }
     let t = line.trim_start();
-    let rest = t.strip_prefix("```").or_else(|| t.strip_prefix("~~~"))?;
-    Some(rest.trim())
+    let marker = t.chars().next().filter(|c| *c == '`' || *c == '~')?;
+    let run = t.chars().take_while(|c| *c == marker).count();
+    if run < 3 {
+        return None;
+    }
+    Some((marker, run, t[run..].trim()))
 }
 
 // The full scan: under `strict`, a naming-warn the mask did not clear escalates to
@@ -743,18 +747,28 @@ pub fn scan_text_with_allow_strict(
     // retired-ordinal dictionary, archived citations) — its lines are skipped, fences
     // included (call/0019). Markdown only; a regular code block and inline backticks
     // stay linted, so a tell cannot be laundered by inline-quoting it.
-    let mut in_ignore_block = false;
+    // The open ignore fence's marker char and run length, or None when outside a
+    // block. Closing requires a bare fence of the *same* marker at least as long
+    // (CommonMark), so an inner code sample with a shorter fence does not leak the
+    // quarantine (plan/0055, P4), and a longer outer fence can wrap it.
+    let mut ignore_fence: Option<(char, usize)> = None;
+    let mut last_line = 0usize;
     for (i, line) in input.lines().enumerate() {
+        last_line = i + 1;
         if markdown {
-            if in_ignore_block {
-                if matches!(fence_info(line), Some(info) if info.is_empty()) {
-                    in_ignore_block = false;
+            if let Some((mch, mlen)) = ignore_fence {
+                if let Some((c, len, info)) = fence_info(line) {
+                    if info.is_empty() && c == mch && len >= mlen {
+                        ignore_fence = None;
+                    }
                 }
                 continue;
             }
-            if fence_info(line) == Some("host-lint:ignore") {
-                in_ignore_block = true;
-                continue;
+            if let Some((c, len, info)) = fence_info(line) {
+                if info == "host-lint:ignore" {
+                    ignore_fence = Some((c, len));
+                    continue;
+                }
             }
         }
         let scanned = mask_allowed(line, allow_lc);
@@ -774,6 +788,20 @@ pub fn scan_text_with_allow_strict(
                 cite,
             });
         }
+    }
+    // An ignore fence left open at end of file silently skipped every line after it
+    // (the fail-open the loop's `continue` produced). Fail loud: report it as a flag
+    // so the file is never reported clean over content it never scanned (plan/0055, P2).
+    if ignore_fence.is_some() {
+        matches.push(Match {
+            file: source.to_string(),
+            line: last_line,
+            col: 0,
+            text: "unclosed host-lint:ignore fence".to_string(),
+            term: "unclosed-ignore-fence".to_string(),
+            severity: Severity::Flag,
+            cite: "close the ```host-lint:ignore block with a bare fence; an unclosed block skips the rest of the file".to_string(),
+        });
     }
 }
 
@@ -832,6 +860,32 @@ fn probe_line(input_lc: &str, needle_lc: &str) -> Option<usize> {
     input_lc.lines().position(|l| l.contains(&probe)).map(|i| i + 1)
 }
 
+// Find `needle` in `haystack` at or after byte offset `from`, returning its
+// absolute offset. When the needle is a single alphanumeric word it must sit on
+// word boundaries, so a short tell ("delve") does not map onto a longer word that
+// merely contains it ("delved"); a multi-word or punctuation excerpt matches as-is
+// (plan/0055, P5). Both arguments are already ascii-lowercased.
+fn find_tell(haystack: &str, needle: &str, from: usize) -> Option<usize> {
+    let single_word = !needle.is_empty()
+        && !needle.contains(char::is_whitespace)
+        && needle.chars().all(|c| c.is_alphanumeric());
+    let mut search = from;
+    while let Some(rel) = haystack.get(search..).and_then(|s| s.find(needle)) {
+        let off = search + rel;
+        let end = off + needle.len();
+        if !single_word {
+            return Some(off);
+        }
+        let left_ok = haystack[..off].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
+        let right_ok = haystack[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
+        if left_ok && right_ok {
+            return Some(off);
+        }
+        search = end.max(off + 1);
+    }
+    None
+}
+
 /// Scan `input` as prose for agentic tells (the host-grammar engine), pushing
 /// each as an advisory `Warn` match, plus one document-level match when the tell
 /// density crosses the threshold. Used for titles, comments, and `--prose` docs;
@@ -873,28 +927,45 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
         let needle = t.excerpt.to_ascii_lowercase();
         let key = (t.id, t.excerpt.as_str());
         let from = *cursor.get(&key).unwrap_or(&0);
-        if let Some(rel) = input_lc.get(from..).and_then(|s| s.find(&needle)) {
-            let off = from + rel;
+        // A key whose cursor reached the sentinel already fell back to a probe/Note
+        // once; drop its repeats rather than re-map them.
+        if from == usize::MAX {
+            continue;
+        }
+        if let Some(off) = find_tell(&input_lc, &needle, from) {
             let end = off + needle.len();
             cursor.insert(key, end.max(off + 1));
             let (line, col) = line_col(input, off);
-            push_tell(matches, source, line, col, &input[off..end], t.id, Severity::Warn, t.cite);
-        } else if from == 0 {
-            // No literal occurrence from the start: a normalised multi-word excerpt (try
-            // a probe line) or a synthetic diagnosis (advisory). Mark seen so any repeats
-            // are dropped, not re-emitted.
+            // `mask_allowed` blanks each byte of a multibyte char with a space, so an
+            // offset valid in `input_lc` can land mid-char in `input`; guard the slice
+            // and fall back to the engine's excerpt rather than panic (plan/0055, P6).
+            let text = if input.is_char_boundary(off) && input.is_char_boundary(end) {
+                &input[off..end]
+            } else {
+                t.excerpt.as_str()
+            };
+            push_tell(matches, source, line, col, text, t.id, Severity::Warn, t.cite);
+        } else {
+            // No literal occurrence at or after the cursor. Probe the region past the
+            // cursor for the excerpt's first words: a hit is a real occurrence the
+            // markdown extractor normalised (a soft line wrap), which the literal find
+            // misses — emit it rather than drop it (plan/0055, P3). Nothing past the
+            // cursor is a phantom surplus or an exhausted repeat. A first miss with no
+            // probe hit is a synthetic whole-document diagnosis (advisory Note). After
+            // any fallback, drop further repeats of this key.
+            let region = input_lc.get(from..).unwrap_or("");
+            let base = input_lc[..from].matches('\n').count();
             cursor.insert(key, usize::MAX);
-            match probe_line(&input_lc, &needle) {
-                Some(line) => {
-                    push_tell(matches, source, line, 0, &t.excerpt, t.id, Severity::Warn, t.cite)
+            match probe_line(region, &needle) {
+                Some(rel_line) => {
+                    push_tell(matches, source, base + rel_line, 0, &t.excerpt, t.id, Severity::Warn, t.cite)
                 }
-                None => {
+                None if from == 0 => {
                     push_tell(matches, source, 1, 0, &t.excerpt, t.id, Severity::Note, t.cite)
                 }
+                None => {}
             }
         }
-        // else: cursor advanced past the real occurrences but no more found → a phantom
-        // surplus or an already-emitted repeat → drop.
     }
     let score = if markdown {
         host_grammar::tell_score_markdown(&masked)
@@ -936,7 +1007,8 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
 pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<Match>, String> {
     let mut matches = Vec::new();
     if root.as_os_str().is_empty() {
-        return Ok(matches);
+        // A clean return here would be a fail-open docs audit over nothing. Fail closed.
+        return Err("--docs needs a repository root (none resolved)".to_string());
     }
     let root_str = root.to_string_lossy();
     // The authored working tree: tracked and staged, then untracked-but-not-ignored. The
@@ -993,10 +1065,14 @@ fn git_paths(root: &str, extra: &[&str]) -> Result<Vec<String>, String> {
 /// squash-merge subject / front-door text, so it is held to the same no-decoration
 /// bar as the front-door docs: an em-dash, arrow, or smart quote there blocks
 /// rather than warns. Body prose and other tells keep their advisory `Warn`. A
-/// `decoration` match whose excerpt occurs in `subject` is the subject's.
-pub fn escalate_subject_decoration(subject: &str, matches: &mut [Match]) {
+/// A `decoration` match on the first line is the subject's. The match carries its
+/// line, so escalate by location, not by substring: a body decoration keeps its
+/// advisory `Warn` even when the same character also appears in the subject
+/// (plan/0055, P1 — the old substring test escalated every body occurrence of a
+/// character the subject happened to use).
+pub fn escalate_subject_decoration(_subject: &str, matches: &mut [Match]) {
     for m in matches.iter_mut() {
-        if m.term == "decoration" && subject.contains(&m.text) {
+        if m.term == "decoration" && m.line == 1 && m.col > 0 {
             m.severity = Severity::Flag;
         }
     }
