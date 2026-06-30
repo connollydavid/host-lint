@@ -12,38 +12,55 @@ TOTAL=0
 ok() { PASS=$((PASS+1)); TOTAL=$((TOTAL+1)); echo "  PASS: $1"; }
 bad() { FAIL=$((FAIL+1)); TOTAL=$((TOTAL+1)); echo "  FAIL: $1"; }
 
+# Assert the exact exit code of a --stdin scan, so a flag (1) -> warn (3) regression
+# is caught rather than passing on any nonzero (plan/0055, V9).
+flag()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 1 ] && ok "flag: $1"  || bad "flag (want rc=1, got $rc): $1"; }
+warn()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 3 ] && ok "warn: $1"  || bad "warn (want rc=3, got $rc): $1"; }
+clean() { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 0 ] && ok "clean: $1" || bad "clean (want rc=0, got $rc): $1"; }
+
 echo "=== Integration Tests ==="
 echo "Binary: $BINARY"
 echo ""
 
-# --- Should match (expect exit 1) ---
-echo "--- Should match (expect flagged) ---"
+# --- Should flag (expect exit 1, blocking) ---
+echo "--- Should flag (expect rc=1) ---"
 
-echo "## Phase 1: Setup" | $BINARY --stdin >/dev/null 2>&1 && bad "## Phase 1: Setup" || ok "## Phase 1: Setup"
-echo "// Pass 1: tokenize" | $BINARY --stdin >/dev/null 2>&1 && bad "// Pass 1: tokenize" || ok "// Pass 1: tokenize"
-echo "Step 3 of 5" | $BINARY --stdin >/dev/null 2>&1 && bad "Step 3 of 5" || ok "Step 3 of 5"
-echo "feat: phase 2 of auth refactor" | $BINARY --stdin >/dev/null 2>&1 && bad "feat: phase 2 of auth refactor" || ok "feat: phase 2 of auth refactor"
-echo "Stage II, data migration" | $BINARY --stdin >/dev/null 2>&1 && bad "Stage II, data migration" || ok "Stage II, data migration"
-
-# Additional should-match cases
-echo "## Round 1: review" | $BINARY --stdin >/dev/null 2>&1 && bad "## Round 1: review" || ok "## Round 1: review"
-echo "Iteration 5: optimize" | $BINARY --stdin >/dev/null 2>&1 && bad "Iteration 5: optimize" || ok "Iteration 5: optimize"
-echo "Wave 2 of rollout" | $BINARY --stdin >/dev/null 2>&1 && bad "Wave 2 of rollout" || ok "Wave 2 of rollout"
-echo "Batch 3 processing" | $BINARY --stdin >/dev/null 2>&1 && bad "Batch 3 processing" || ok "Batch 3 processing"
-echo "## Part 1: intro" | $BINARY --stdin >/dev/null 2>&1 && bad "## Part 1: intro" || ok "## Part 1: intro"
+flag "## Phase 1: Setup"
+flag "feat: phase 2 of auth refactor"
+flag "Stage II, data migration"      # multi-letter uppercase Roman
+flag "Iteration 5: optimize"
+flag "Wave 2 of rollout"
+flag "Sprint 3 backlog"
+flag "Phase IV milestone"
 
 # Internal code-as-name tell (VOCABULARY.md, internal tracking codes)
-echo "ci: fix the no-OS-comm guard's fail-open nm regex (review B1)" | $BINARY --stdin >/dev/null 2>&1 && bad "ci: ... (review B1)" || ok "ci: ... (review B1)"
-echo "addresses finding #7" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses finding #7" || ok "addresses finding #7"
-echo "blocker B2 resolved" | $BINARY --stdin >/dev/null 2>&1 && bad "blocker B2 resolved" || ok "blocker B2 resolved"
-echo "addresses review (B1)" | $BINARY --stdin >/dev/null 2>&1 && bad "addresses review (B1)" || ok "addresses review (B1)"
+flag "ci: fix the no-OS-comm guard's fail-open nm regex (review B1)"
+flag "addresses finding #7"
+flag "blocker B2 resolved"
+flag "addresses review (B1)"
 
-# Positional checklist-item references (host#16): box/boxes/steps + numeral, range, glued
-echo "plan/0001: box 7 [x] (deploy path landed)" | $BINARY --stdin >/dev/null 2>&1 && bad "box 7" || ok "box 7"
-echo "plan/0001 boxes 4-8 blocked" | $BINARY --stdin >/dev/null 2>&1 && bad "boxes 4-8" || ok "boxes 4-8"
-echo "box 3 root cause localized" | $BINARY --stdin >/dev/null 2>&1 && bad "box 3" || ok "box 3"
-echo "plan steps 3-5 updated" | $BINARY --stdin >/dev/null 2>&1 && bad "steps 3-5" || ok "steps 3-5"
-echo "step 3-5 closed" | $BINARY --stdin >/dev/null 2>&1 && bad "step 3-5 (range)" || ok "step 3-5 (range)"
+# Positional checklist-item references (host#16): box/boxes/steps + numeral or range
+flag "plan/0001: box 7 [x] (deploy path landed)"
+flag "plan/0001 boxes 4-8 blocked"
+flag "box 3 root cause localized"
+flag "plan steps 3-5 updated"
+
+# --- Should warn (expect exit 3, advisory) — the corpus-grounded demotion (plan/0055) ---
+echo "--- Should warn (expect rc=3) ---"
+
+warn "// Pass 1: tokenize"
+warn "Round 1 of review"
+warn "Batch 3 processing"
+warn "see Part 1 of the file"
+warn "see section 3 of the spec"
+warn "train for epoch 0 then stop"
+warn "step 3-5 closed"        # singular step is advisory; the range still warns
+
+# --- Roman / verb false flags that must NOT block (plan/0055) ---
+echo "--- Blocking-tier false flags now clean (expect rc=0 or rc=3, never rc=1) ---"
+clean "in this pass I fixed the parser bug"   # pronoun "I" is not a Roman numeral
+clean "port the lexer to C"                   # single language letter
+clean "step into 3 dimensions of design"      # numeral two words away
 
 # --- Must not match (expect exit 0) ---
 echo ""
@@ -155,7 +172,7 @@ fi
 # --- Tier 1+2: decimal numerals and label prefix (expect flag, rc=1) ---
 echo ""
 echo "--- Decimal numerals + label prefix (expect flag) ---"
-for s in 'entry point (Phase 5.0).' '5.5: exec/pty tools' '// 5.5: the pty exec tool' '## 5.5: error handling' 'section 2.1'; do
+for s in 'entry point (Phase 5.0).' '5.5: exec/pty tools' '// 5.5: the pty exec tool' '## 5.5: error handling'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 1 ] && ok "flag: $s" || bad "flag: $s (rc=$rc)"
 done
@@ -163,7 +180,7 @@ done
 # --- Tier 3: bare-numeral degenerate form (expect warn, rc=3) ---
 echo ""
 echo "--- Bare-numeral degenerate form (expect warn) ---"
-for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5.3' 'implements work-item 5.3'; do
+for s in 'as decided in 2.1' 'exec tools (5.5)' 'the peek/poke tools arrive in 5.3' 'implements work-item 5.3' 'section 2.1 of the spec'; do
     printf '%s' "$s" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 3 ] && ok "warn: $s" || bad "warn: $s (rc=$rc)"
 done
@@ -310,6 +327,49 @@ printf 'see Decision 2.4 here' | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$
 [ "$rc" -eq 3 ] && ok "non-strict: undeclared code only warns" || bad "non-strict warn (rc=$rc)"
 unset GIT_DIR
 rm -rf "$LEX"
+
+# --- host-lint:ignore naming fence (plan/0055, V8) ---
+echo ""
+echo "--- host-lint:ignore naming fence ---"
+fence_dir="$tmpdir/fence"; mkdir -p "$fence_dir"
+printf 'intro line\n```host-lint:ignore\ncited Phase 1 reference\n```\nclean tail\n' > "$fence_dir/ok.md"
+$BINARY "$fence_dir/ok.md" >/dev/null 2>&1 && ok "ignore-fence: quarantined tell is clean" || bad "ignore-fence: quarantined tell should be clean (rc=$?)"
+printf 'intro line\nPhase 1 inline tell here\n' > "$fence_dir/inline.md"
+$BINARY "$fence_dir/inline.md" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 1 ] && ok "ignore-fence: inline tell still flags" || bad "ignore-fence: inline tell should flag (rc=$rc)"
+printf '```python\nPhase 1 in a code fence\n```\n' > "$fence_dir/codefence.md"
+$BINARY "$fence_dir/codefence.md" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 1 ] && ok "ignore-fence: a plain code fence stays linted" || bad "ignore-fence: a plain code fence should stay linted (rc=$rc)"
+printf 'intro\n```host-lint:ignore\nPhase 2 ships here\n' > "$fence_dir/unclosed.md"
+$BINARY "$fence_dir/unclosed.md" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 1 ] && ok "ignore-fence: unclosed fence fails loud" || bad "ignore-fence: unclosed fence should fail loud (rc=$rc)"
+
+# --- pre-commit hook end-to-end (plan/0055, V8): scans the staged blob, fails closed ---
+echo ""
+echo "--- pre-commit hook end-to-end ---"
+HOOK_SCRIPT="$(cd "$(dirname "$0")" && pwd)/pre-commit"
+if [ -f "$HOOK_SCRIPT" ]; then
+    hookrepo="$tmpdir/hook-repo"
+    git init -q "$hookrepo"
+    cp "$HOOK_SCRIPT" "$hookrepo/.git/hooks/pre-commit"
+    cp "$BINARY_ABS" "$hookrepo/.git/hooks/host-lint"
+    chmod +x "$hookrepo/.git/hooks/pre-commit" "$hookrepo/.git/hooks/host-lint"
+    # a clean file commits
+    printf 'ordinary content\n' > "$hookrepo/a.txt"
+    (cd "$hookrepo" && git add a.txt && git -c user.name=t -c user.email=t@t commit -q -m "add a") \
+        && ok "hook: a clean staged file commits" || bad "hook: a clean staged file should commit"
+    # a staged tell is blocked (the staged blob, not the working tree)
+    printf '## Phase 1: setup\n' > "$hookrepo/plan.md"
+    (cd "$hookrepo" && git add plan.md && git -c user.name=t -c user.email=t@t commit -q -m "add plan" 2>/dev/null) \
+        && bad "hook: a staged tell should block the commit" || ok "hook: a staged tell blocks the commit"
+    # the staged-blob property: stage the tell, then edit it out of the working tree
+    # unstaged — the hook must still block on the staged bytes (plan/0055, V4)
+    (cd "$hookrepo" && printf 'clean now\n' > plan.md \
+        && git -c user.name=t -c user.email=t@t commit -q -m "commit staged tell" 2>/dev/null) \
+        && bad "hook: must lint the staged blob, not the clean working tree" || ok "hook: lints the staged blob, not the working tree"
+else
+    bad "hook: pre-commit script not found at $HOOK_SCRIPT"
+fi
 
 # --- Summary ---
 echo ""
