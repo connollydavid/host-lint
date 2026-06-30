@@ -965,6 +965,10 @@ fn lexicon_guard_citation_gates_tracker_refs() {
         &[]
     )
     .is_ok());
+    // plan/0055 (L2): a phantom '#999' cited to an unrelated URL that does not
+    // reference 999 is refused — the URL must be provenance, not any link.
+    assert!(validate_lexicon_entry(&entry("#999", Some("https://example.com/unrelated")), &[]).is_err());
+    assert!(validate_lexicon_entry(&entry("#999", Some("https://github.com/o/r/issues/999")), &[]).is_ok());
 }
 
 #[test]

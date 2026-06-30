@@ -598,10 +598,24 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
         return Err("empty phrase".to_string());
     }
     if is_tracker_ref(&e.phrase, jira_keys) {
-        if e.url.is_none() {
+        let url = match &e.url {
+            None => {
+                return Err(format!(
+                    "'{}' is a tracker reference with no URL — register it as '{} <url>' so the link is provenance, not a phantom",
+                    e.phrase, e.phrase
+                ))
+            }
+            Some(u) => u,
+        };
+        // Offline provenance: the cited URL must actually reference the same number,
+        // so a phantom '#999' cited to an unrelated link cannot mask a real
+        // 'review #999' (plan/0055, L2). Liveness (the link resolves) still needs the
+        // explicit `lexicon --check-urls` lane; a network fetch does not gate by default.
+        let number: String = e.phrase.chars().filter(|c| c.is_ascii_digit()).collect();
+        if !number.is_empty() && !url.contains(&number) {
             return Err(format!(
-                "'{}' is a tracker reference with no URL — register it as '{} <url>' so the link is provenance, not a phantom",
-                e.phrase, e.phrase
+                "'{}' cites '{}', which does not reference {} — cite the URL that actually points to the tracker item",
+                e.phrase, url, number
             ));
         }
         return Ok(());
