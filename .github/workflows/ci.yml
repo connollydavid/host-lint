@@ -37,7 +37,7 @@ jobs:
             name: host-lint-windows-arm64.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install musl toolchain
         if: contains(matrix.target, 'musl')
         run: |
@@ -62,7 +62,7 @@ jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run conformance gates
         run: |
           chmod +x lint-skill.sh
@@ -71,7 +71,7 @@ jobs:
   allium:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install allium-cli (pinned 3.4.2)
         run: cargo install allium-cli --version 3.4.2
       - name: allium check
@@ -94,7 +94,7 @@ jobs:
   kani:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Kani (pinned)
         run: |
           cargo install --locked kani-verifier --version 0.67.0
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run proptest tests
         run: cargo test
       - name: Download static binary
@@ -140,7 +140,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
