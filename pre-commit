@@ -2,12 +2,19 @@
 # pre-commit hook for host-lint
 # Installs as .git/hooks/pre-commit or .git/hooks/commit-msg
 
+# pipefail so a failed `git show` in the staged-blob pipe propagates (rc != 0) and
+# the gate fails closed, rather than the linter seeing empty stdin and exiting 0.
+set -o pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/host-lint"
+# The reproducible asset is named host-lint on Linux/macOS and host-lint.exe on
+# Windows; accept either so the hook works on the Windows targets CI publishes.
+[ -x "$BINARY" ] || BINARY="$SCRIPT_DIR/host-lint.exe"
 EXIT_CODE=0
 
 if [ ! -x "$BINARY" ]; then
-    echo "host-lint: binary not found or not executable at $BINARY" >&2
+    echo "host-lint: binary not found or not executable at $SCRIPT_DIR/host-lint[.exe]" >&2
     exit 2
 fi
 
@@ -28,18 +35,19 @@ act_on_rc() {
 
 case "$(basename "$0")" in
     pre-commit)
-        staged_files=$(git diff --cached --name-only --diff-filter=ACM)
-        if [ -n "$staged_files" ]; then
-            while IFS= read -r file; do
-                [ -n "$file" ] || continue
-                # Lint the STAGED content (the bytes being committed), not the
-                # working-tree copy: a tell staged then edited out unstaged would
-                # otherwise be committed unseen. `--stdin-as` attributes the blob to
-                # the real path so extension semantics and .host-lintignore apply.
-                result=$(git show ":$file" 2>/dev/null | "$BINARY" --stdin-as "$file" 2>&1); rc=$?
-                act_on_rc "$rc" "$result" "$file"
-            done <<< "$staged_files"
-        fi
+        # NUL-delimited (-z) so a non-ASCII path is delivered raw, not C-quoted by
+        # core.quotePath — a quoted name would make `git show ":$file"` fail (and,
+        # before pipefail, feed empty stdin to the linter, committing a tell unseen).
+        # Process substitution keeps the loop in this shell so EXIT_CODE survives.
+        while IFS= read -r -d '' file; do
+            [ -n "$file" ] || continue
+            # Lint the STAGED content (the bytes being committed), not the
+            # working-tree copy: a tell staged then edited out unstaged would
+            # otherwise be committed unseen. `--stdin-as` attributes the blob to
+            # the real path so extension semantics and .host-lintignore apply.
+            result=$(git show ":$file" 2>&1 | "$BINARY" --stdin-as "$file" 2>&1); rc=$?
+            act_on_rc "$rc" "$result" "$file"
+        done < <(git diff --cached --name-only -z --diff-filter=ACM)
         ;;
     commit-msg)
         msg_file="$1"

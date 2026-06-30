@@ -27,11 +27,10 @@ echo "--- Should flag (expect rc=1) ---"
 
 flag "## Phase 1: Setup"
 flag "feat: phase 2 of auth refactor"
-flag "Stage II, data migration"      # multi-letter uppercase Roman
+flag "Stage 2, data migration"
 flag "Iteration 5: optimize"
 flag "Wave 2 of rollout"
 flag "Sprint 3 backlog"
-flag "Phase IV milestone"
 
 # Internal code-as-name tell (VOCABULARY.md, internal tracking codes)
 flag "ci: fix the no-OS-comm guard's fail-open nm regex (review B1)"
@@ -61,6 +60,11 @@ echo "--- Blocking-tier false flags now clean (expect rc=0 or rc=3, never rc=1) 
 clean "in this pass I fixed the parser bug"   # pronoun "I" is not a Roman numeral
 clean "port the lexer to C"                   # single language letter
 clean "step into 3 dimensions of design"      # numeral two words away
+clean "phase iv intravenous line"             # lowercase roman: not a label
+clean "phase DC offset rejection"             # EE abbreviation, phase's home domain
+clean "wave XL of the rollout"                # size abbreviation
+clean "boxes MM apart on the board"           # millimetres
+clean "wave 12-07 release"                    # date, not an ascending checklist range
 
 # --- Must not match (expect exit 0) ---
 echo ""
@@ -367,6 +371,16 @@ if [ -f "$HOOK_SCRIPT" ]; then
     (cd "$hookrepo" && printf 'clean now\n' > plan.md \
         && git -c user.name=t -c user.email=t@t commit -q -m "commit staged tell" 2>/dev/null) \
         && bad "hook: must lint the staged blob, not the clean working tree" || ok "hook: lints the staged blob, not the working tree"
+    # a tell in a NON-ASCII-named staged file must block: core.quotePath C-quotes
+    # such a path, which (without -z + pipefail) fed empty stdin and committed
+    # the tell unseen (plan/0055 cast review). Fresh repo to isolate the index.
+    nrepo="$tmpdir/hook-nonascii"
+    git init -q "$nrepo"
+    cp "$HOOK_SCRIPT" "$nrepo/.git/hooks/pre-commit"; cp "$BINARY_ABS" "$nrepo/.git/hooks/host-lint"
+    chmod +x "$nrepo/.git/hooks/pre-commit" "$nrepo/.git/hooks/host-lint"
+    printf '## Phase 1: setup\n' > "$nrepo/café.md"
+    (cd "$nrepo" && git add "café.md" && git -c user.name=t -c user.email=t@t commit -q -m "add café" 2>/dev/null) \
+        && bad "hook: a tell in a non-ASCII-named file must block" || ok "hook: a non-ASCII-named staged tell blocks"
 else
     bad "hook: pre-commit script not found at $HOOK_SCRIPT"
 fi

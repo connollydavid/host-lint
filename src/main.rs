@@ -531,15 +531,27 @@ fn main() {
         // applies to the real path so a sanctioned file (a test fixture, the
         // append-only record) is not flagged when committed.
         let mut input = String::new();
-        io::stdin().read_to_string(&mut input).unwrap_or_default();
+        // Drain stdin first (even when we will not scan) so the upstream `git show`
+        // completes rather than taking SIGPIPE under the hook's `pipefail`.
+        let read = io::stdin().read_to_string(&mut input);
         let rel = path.trim_start_matches(['/', '\\']).replace('\\', "/");
         let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
         if !path_ignored(&rel, &load_ignore(&root)) && !is_ci_file(path) && is_scannable(ext) {
+            // A scannable file whose staged content is not valid UTF-8 cannot be
+            // scanned: fail closed rather than pass it unseen (plan/0055 cast review).
+            if let Err(e) = read {
+                eprintln!("host-lint: cannot read staged content of {path} as UTF-8: {e}");
+                process::exit(2);
+            }
             scan_text_with_allow_strict(&input, path, allow, strict, &mut matches);
         }
     } else if stdin_flag {
         let mut input = String::new();
-        io::stdin().read_to_string(&mut input).unwrap_or_default();
+        if let Err(e) = io::stdin().read_to_string(&mut input) {
+            // Fail closed rather than scan an empty string over an unreadable input.
+            eprintln!("host-lint: cannot read stdin as UTF-8: {e}");
+            process::exit(2);
+        }
         // A stdin title/draft gets both naming and prose tells.
         scan_text_with_allow_strict(&input, "stdin", allow, strict, &mut matches);
         scan_prose_text(&input, "stdin", allow, &mut matches);

@@ -80,26 +80,26 @@ proptest! {
     }
 
     #[test]
-    fn flag_term_followed_by_multi_letter_uppercase_roman_is_detected(
+    fn flag_term_followed_by_ordinal_roman_is_detected(
         term in "phase|stage|sprint|wave|cycle",
-        // A multi-letter Roman numeral written uppercase ("Phase IV") is a real
-        // positional tell. Single-letter Roman is excluded (see the negative
-        // test below): "I"/"C" collide with the pronoun and language letters.
-        roman in "II|III|IV|VI|VII|VIII|IX|XI|XII|XIII|XIV|XV|XL|XC|CD|CM"
+        // An uppercase Roman of plausible ordinal value (<= XXXIX) is a real phase
+        // tell and blocks — it must not be smuggleable past the gate (plan/0055).
+        roman in "II|III|IV|VI|VIII|IX|XI|XII|XV|XX|XXIV|XXXIX"
     ) {
-        let line = format!("{} {}", term, roman);
+        let line = format!("{} {} ships", term, roman);
         prop_assert!(check_line(&line).is_some(), "line: {}", line);
     }
 
     #[test]
-    fn flag_term_followed_by_single_letter_or_lowercase_roman_does_not_block(
-        term in "phase|stage|sprint|wave",
-        // A single-letter Roman ("I", "C", "V") is the pronoun/language-letter
-        // collision; a lowercase token that merely parses as Roman ("mix", "vi")
-        // is an ordinary word. Neither blocks (plan/0055).
-        token in "I|V|X|L|C|D|M|mix|vi|div|civ"
+    fn flag_term_followed_by_roman_acronym_or_lowercase_does_not_block(
+        term in "phase|stage|sprint|wave|cycle",
+        // A single-letter Roman (pronoun/letter collision), a lowercase token that
+        // merely parses as Roman ("mix"/"iv"), and an uppercase abbreviation whose
+        // Roman value exceeds an ordinal (DC=600, CM=900, MM=2000, XL=40, XC=90,
+        // CD=400, MD=1500, DIV=504, LIV=54) all stay clean (plan/0055 cast review).
+        token in "I|V|X|C|D|M|iv|mix|dc|div|DC|CM|MM|MD|MI|XL|XC|CD|DIV|MIX|LIV"
     ) {
-        let line = format!("{} {} fixed it", term, token);
+        let line = format!("{} {} done", term, token);
         prop_assert!(check_line(&line).is_none(), "line: {}", line);
     }
 
@@ -186,8 +186,11 @@ proptest! {
     #[test]
     fn bare_numeral_headers_are_detected(
         level in 1..7usize,
-        major in 0..1000u32,
-        minor in proptest::option::of(0..1000u32)
+        // 1-2 digit ordinals only: a bare integer of 3+ digits ("## 404") reads as a
+        // status code / numeric key and is skipped (plan/0055), so it is not a
+        // should-flag input here.
+        major in 0..100u32,
+        minor in proptest::option::of(0..100u32)
     ) {
         let rest = match minor {
             Some(m) => format!("{}.{}", major, m),
@@ -217,7 +220,7 @@ proptest! {
 
     #[test]
     fn bare_numeral_headers_only_flagged_in_markdown_sources(
-        major in 0..1000u32
+        major in 0..100u32
     ) {
         let input = format!("# {}", major);
         let mut md_matches = Vec::new();
@@ -510,19 +513,28 @@ fn vocabulary_term_lists_match_the_code() {
 // demotion, and the year/status guards.
 #[test]
 fn plan_0055_blocking_tier_precision_recut() {
-    // a single-letter Roman (the pronoun "I", language letters) after a
-    // tell-noun no longer blocks, and a lowercase token that merely parses as
-    // Roman ("mix") is ordinary prose.
+    // An uppercase Roman of ordinal value (<= XXXIX) is a real phase tell and
+    // blocks — it must not smuggle past the gate (plan/0055, operator review).
+    for flag in ["Phase IV ships the parser", "Stage VIII review", "Sprint XII backlog"] {
+        assert!(check_line(flag).is_some(), "roman phase tell should block: {flag}");
+    }
+    // A single-letter Roman (pronoun/letter collision), a lowercase roman-word, and
+    // an uppercase abbreviation whose Roman value exceeds an ordinal stay clean:
+    // the abbreviation collisions (DC, CM, MM, XL, DIV) live in a tell noun's home
+    // domain and must not false-flag (plan/0055 cast review).
     for clean in [
         "this phase I shipped the fix",
         "the next wave C landed",
         "phase mix in the daw",
+        "phase iv intravenous line",     // lowercase: not a label
+        "phase DC offset rejection",     // EE abbreviation, phase's home domain
+        "boxes MM apart on the board",   // millimetres
+        "wave XL of the rollout",        // size
+        "box DIV layout",                // HTML
+        "stage MD review",
     ] {
         assert_eq!(check_line(clean), None, "should be clean: {clean}");
     }
-    // A multi-letter uppercase Roman after a tell-noun is still a real tell.
-    assert!(check_line("Phase IV ships the parser").is_some(), "Phase IV should flag");
-    assert!(check_line("Stage VIII review").is_some(), "Stage VIII should flag");
 
     // Demotion (data-grounded, plan/0055): the verb/measurement terms and the
     // domain-heavy terms warn, never block. round/level/step/part/pass plus the six
@@ -559,16 +571,20 @@ fn plan_0055_blocking_tier_precision_recut() {
         assert_eq!(classify_line(clean, false), None, "verb collision clean: {clean}");
     }
 
-    // a year or status markdown heading is not a bare-ordinal tell.
-    for clean in ["## 2024", "## 2024.01"] {
-        assert_eq!(check_bare_numeral_header(clean), None, "year heading clean: {clean}");
+    // a year, status-code, or numeric-key markdown heading is not a bare-ordinal tell.
+    for clean in ["## 2024", "## 2024.01", "## 404", "## 200", "## 500"] {
+        assert_eq!(check_bare_numeral_header(clean), None, "code/year heading clean: {clean}");
     }
     assert!(check_bare_numeral_header("## 3").is_some(), "## 3 should flag");
+    assert!(check_bare_numeral_header("## 12").is_some(), "## 12 should flag");
     assert!(check_bare_numeral_header("## 3.5").is_some(), "## 3.5 should flag");
 
-    // a date or year range is not a checklist range.
-    assert_eq!(check_line("release wave 2024-01 shipped"), None, "date-as-range clean");
-    assert!(check_line("wave 4-8 closed").is_some(), "short range still flags");
+    // only an ascending short range is a checklist range; a date, a time span, a
+    // year range, and a degenerate run are not.
+    for clean in ["release wave 2024-01 shipped", "wave 12-07 release", "wave 9-5 hours", "phase 1-1 noop"] {
+        assert_eq!(check_line(clean), None, "non-ascending/year range clean: {clean}");
+    }
+    assert!(check_line("wave 4-8 closed").is_some(), "ascending short range still flags");
 
     // a status-code or numeric-key label is not a milestone label.
     for clean in ["// 200: OK response handler", "// 404: not found"] {
@@ -1015,15 +1031,19 @@ fn lexicon_no_laundering_guard_rejects_a_position_noun() {
         "review",       // bare review noun: masks every "review #7"
         "the phase",    // carries the noun: masks "the phase 2"
         "wi",           // bare filing-code noun
+        "F1",           // bare review code: masks every "review F1" (plan/0055 cast review)
+        "B2",           // bare review code
+        "R1",           // bare review code (also a hardware designator; rephrase or fence it)
     ] {
         assert!(
             validate_lexicon_entry(&entry(laundering, None), &[]).is_err(),
-            "must refuse a phrase carrying a bare position noun: {laundering}"
+            "must refuse a phrase carrying a bare position noun or review code: {laundering}"
         );
     }
-    // A warn-tier phrase with no standalone position noun is still legitimate.
+    // A warn-tier phrase with no standalone position noun or code is still legitimate.
     assert!(validate_lexicon_entry(&entry("Decision 2.1", None), &[]).is_ok());
     assert!(validate_lexicon_entry(&entry("cross-section view", None), &[]).is_ok());
+    assert!(validate_lexicon_entry(&entry("COM1", None), &[]).is_ok()); // device noun, not a 1-letter code
 }
 
 #[test]

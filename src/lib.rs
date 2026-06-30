@@ -147,12 +147,13 @@ pub fn is_review_code(word: &str) -> bool {
     }
 }
 
-// A numeric range ("4-8"): two non-empty all-digit parts, each at most three
-// digits, joined by a single hyphen (ASCII or a typographic en/em-dash). A
-// positional reference often spans a contiguous span of checklist items (a range
-// like "4-8"), which `is_numeral` does not accept. The three-digit bound keeps a
-// four-digit side out: a date or a year range ("2024-01", "1999-2024") reads as
-// a year, not a checklist range.
+// A checklist range ("4-8"): two non-empty all-digit parts joined by a single
+// hyphen (ASCII or a typographic en/em-dash), each at most three digits, and
+// strictly ascending. A positional reference spans a contiguous run of checklist
+// items, which `is_numeral` does not accept. The three-digit bound keeps a
+// four-digit (year) side out; the ascending requirement keeps a date ("12-07"),
+// a time span ("9-5"), and a degenerate run ("1-1", "0-0") out — a real checklist
+// span counts up (plan/0055 cast review).
 fn is_num_range(word: &str) -> bool {
     let normalized = word.replace(['–', '—'], "-");
     match normalized.split_once('-') {
@@ -163,20 +164,47 @@ fn is_num_range(word: &str) -> bool {
                 && b.len() <= 3
                 && a.bytes().all(|c| c.is_ascii_digit())
                 && b.bytes().all(|c| c.is_ascii_digit())
+                && a.parse::<u32>().ok().zip(b.parse::<u32>().ok()).is_some_and(|(x, y)| x < y)
         }
         None => false,
     }
 }
 
+// The integer value of a canonical Roman numeral (lowercased input), or None if a
+// character is not a Roman digit. The caller has already established canonicity via
+// `is_numeral`, so this only bounds the value.
+fn roman_value(s: &str) -> Option<u32> {
+    let mut total: i64 = 0;
+    let mut prev: i64 = 0;
+    for c in s.chars().rev() {
+        let v: i64 = match c {
+            'i' => 1, 'v' => 5, 'x' => 10, 'l' => 50, 'c' => 100, 'd' => 500, 'm' => 1000,
+            _ => return None,
+        };
+        if v < prev { total -= v; } else { total += v; }
+        prev = v;
+    }
+    u32::try_from(total).ok()
+}
+
+// The largest Roman value that still reads as a plausible ordinal position (XXXIX).
+// A real phase/stage/sprint ordinal in Roman never exceeds this; every ordinary
+// uppercase abbreviation that is also canonical Roman carries C/D/M or is a large
+// two-letter form, so it exceeds it (DC=600, CM=900, MM=2000, MD=1500, DIV=504,
+// XL=40, XC=90, LIV=54). The bound is what keeps "Phase IV" blocking while "phase
+// DC" / "wave XL" do not.
+const MAX_BLOCKING_ROMAN: u32 = 39;
+
 // Whether the token immediately after a tell-noun reads as a *blocking* positional
-// numeral. Accepts an arabic integer or single decimal ("2", "5.5"), a checklist
-// range ("4-8"), or a multi-letter Roman numeral written in uppercase in the
-// source ("IV", "VIII"). `is_numeral` also accepts a single-letter Roman
-// (I, V, X, L, C, D, M), but those collide with the English pronoun "I" and with
-// language/identifier letters ("port the pass to C"), and a lowercase token that
-// merely parses as Roman ("mix", "vi") is an ordinary word — so neither blocks
-// here. A genuine "Phase 1" is written with a digit; "Phase i" is too ambiguous
-// to block (plan/0055).
+// numeral: an arabic integer or single decimal ("2", "5.5"), a checklist range
+// ("4-8"), or a Roman numeral written uppercase whose value is a plausible ordinal
+// (<= XXXIX). Roman is bounded, not dropped, so a roman-numbered phase tell
+// ("Phase IV", "Stage XII") still blocks and cannot smuggle past the gate, while
+// the ordinary uppercase abbreviations that happen to be canonical Roman (DC, CM,
+// MM, MD, DIV, XL, ...) do not false-flag in a tell noun's home domain — they all
+// exceed the ordinal bound. A single letter (I, V, X) is the pronoun/identifier
+// collision (excluded by the length check), and a lowercase token ("mix", "dc",
+// "iv") is an ordinary word, not a label (plan/0055 cast review).
 fn is_blocking_numeral(lower: &str, orig: &str) -> bool {
     if lower.is_empty() {
         return false;
@@ -190,11 +218,13 @@ fn is_blocking_numeral(lower: &str, orig: &str) -> bool {
     if parts.len() <= 2 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())) {
         return true;
     }
-    // Multi-letter Roman numeral, uppercase in the source.
+    // A multi-letter Roman numeral, uppercase in the source, of plausible ordinal
+    // value.
     is_numeral(lower)
         && lower.chars().count() >= 2
         && orig.chars().any(|c| c.is_alphabetic())
         && orig.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_ascii_uppercase())
+        && roman_value(lower).is_some_and(|v| v <= MAX_BLOCKING_ROMAN)
 }
 
 pub fn check_line(line: &str) -> Option<String> {
@@ -212,7 +242,8 @@ pub fn check_line(line: &str) -> Option<String> {
             // glued form (the noun joined to a numeral by a hyphen) is out of
             // scope: a legitimate glued term has no numeral-free LEXICON prefix to
             // declare, so it could not be escaped, and it is the same class as a
-            // noun-glued numeral.
+            // noun-glued numeral. The original-case token lets a Roman numeral
+            // require uppercase ("Phase IV" blocks, "phase iv" does not).
             if let Some(next) = words.get(i + 1) {
                 let next_clean = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
                 let next_orig = orig_words
@@ -414,8 +445,14 @@ pub fn check_bare_numeral_header(line: &str) -> Option<String> {
     if parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) {
         // A four-digit (or longer) component reads as a year, not a bare ordinal:
         // a changelog "## 2024" or "## 2024.01" heading is not a position label.
-        // Mirrors the gather lane's year skip (plan/0055).
         if parts.iter().any(|p| p.len() >= 4) {
+            return None;
+        }
+        // A bare integer heading of three or more digits reads as a status code or
+        // numeric key ("## 404", "## 200", "## 500"), not a bare ordinal section.
+        // Mirrors the label-prefix status-code guard; a short ordinal ("## 3",
+        // "## 12") and the dotted milestone code ("## 5.5") still flag (plan/0055).
+        if parts.len() == 1 && rest.len() >= 3 {
             return None;
         }
         return Some(rest.to_string());
@@ -657,25 +694,30 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
             e.phrase, term
         ));
     }
-    // A phrase that carries a position noun as a standalone word would, when
-    // masked, blank that noun out of a real "<noun> N" tell — silencing the whole
-    // class repo-wide and defeating strict (the masked line never produces the
-    // warn strict escalates). Refuse it (plan/0055). Over-strict by design: a
-    // legitimate multiword phrase that happens to contain a bare position noun is
-    // rephrased; safety beats permissiveness here.
-    if let Some(noun) = e.phrase.split_whitespace().find_map(|w| {
+    // A phrase that carries a position noun OR a bare review code as a standalone
+    // word would, when masked, blank that token out of a real tell — a "<noun> N"
+    // flag, or a "review <code>" flag — silencing the whole class repo-wide and
+    // defeating strict (the masked line never produces the warn strict escalates).
+    // Refuse it (plan/0055). The review-code half matters because the no-laundering
+    // guard must close both the noun and the code path: registering "F1" launders
+    // every "review F1"/"finding F1". A cited tracker ref ("#7 <url>") is allowed
+    // above; this catches the un-cited bare codes. Over-strict by design: a
+    // legitimate multiword phrase carrying such a token is rephrased; safety beats
+    // permissiveness here.
+    if let Some(token) = e.phrase.split_whitespace().find_map(|w| {
         let t = w
             .trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
             .to_ascii_lowercase();
         (FLAG_TERMS.contains(&t.as_str())
             || WARN_ORDINAL_TERMS.contains(&t.as_str())
             || REVIEW_CODE_TERMS.contains(&t.as_str())
-            || WARN_NOUNS.contains(&t.as_str()))
+            || WARN_NOUNS.contains(&t.as_str())
+            || is_review_code(&t))
         .then_some(t)
     }) {
         return Err(format!(
-            "'{}' carries the position noun '{}' as a word — masking it would blank that noun out of a real '{} N' tell; rename the work after its content rather than allow-list the tell shape",
-            e.phrase, noun, noun
+            "'{}' carries the position noun or tracking code '{}' as a word — masking it would blank that token out of a real tell ('{} N' or 'review {}'); rename the work after its content rather than allow-list the tell shape",
+            e.phrase, token, token, token
         ));
     }
     Ok(())

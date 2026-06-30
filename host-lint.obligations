@@ -28,7 +28,7 @@ transition-terminal.Check.status     => structural
 
 # --- Detection rules (behavioural — each test exercises the detector it discharges) ---
 rule-success.DetectPhaseSynonym               => test:flag_term_followed_by_arabic_numeral_is_detected exercises=check_line
-rule-failure.DetectPhaseSynonym.1             => test:flag_term_followed_by_single_letter_or_lowercase_roman_does_not_block exercises=check_line
+rule-failure.DetectPhaseSynonym.1             => test:flag_term_followed_by_roman_acronym_or_lowercase_does_not_block exercises=check_line
 rule-entity-creation.DetectPhaseSynonym.1     => test:phase_synonym_match_is_a_flag exercises=classify_line
 rule-success.DetectLeadingCodeLabel           => test:leading_numeral_label_prefix_is_flagged exercises=check_label_prefix
 rule-failure.DetectLeadingCodeLabel.1         => test:clock_time_is_not_a_label_prefix exercises=check_label_prefix
