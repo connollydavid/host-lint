@@ -18,6 +18,15 @@ pub const FLAG_TERMS: &[&str] = &[
     "box", "boxes", "steps",
 ];
 
+// The checklist-position subset of FLAG_TERMS: these block the arabic checklist
+// form (a checklist noun plus a numeral or a range) but NOT a spelled ordinal,
+// because "steps one to six" is ordinary descriptive prose (the XP-persona
+// process, cast/), not a filing-system tell. Only the phase-synonym work-unit
+// nouns above take the spelled-ordinal shape (a phase-synonym noun plus a spelled
+// ordinal). Grounded in the repo corpus: the sole flag-noun-plus-spelled hit
+// across tracked docs is a legitimate "steps one to six".
+const CHECKLIST_TERMS: &[&str] = &["box", "boxes", "steps"];
+
 // warn tier: words whose ordinal use is overwhelmingly domain vocabulary, not
 // the naming of a work unit. Measured against ~35.5k real .rs files (plan/0055,
 // call/0037): `round` (cipher rounds), `level` (log/DTD levels), `step` (tutorial
@@ -227,6 +236,28 @@ fn is_blocking_numeral(lower: &str, orig: &str) -> bool {
         && roman_value(lower).is_some_and(|v| v <= MAX_BLOCKING_ROMAN)
 }
 
+// A closed set of spelled-out positional numbers, cardinal ("one".."twenty") and
+// ordinal ("first".."twentieth"). The set is closed and small on purpose: it
+// covers the ordinal-band range a plan author reaches for while a larger open
+// recogniser would collide with ordinary prose. Only a phase-synonym tell noun
+// immediately followed by one of these blocks, so the spelled band name is caught
+// the same way the arabic one is; the checklist nouns and the domain-heavy warn
+// nouns are excluded, since their spelled forms ("steps one to six", "round one",
+// "part one") are ordinary English. Lowercase membership only; a spelled number
+// carries no pronoun or abbreviation collision, so no case constraint is needed.
+const SPELLED_ORDINALS: &[&str] = &[
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+    "eighteen", "nineteen", "twenty",
+    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth",
+    "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth",
+    "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth", "twentieth",
+];
+
+fn is_spelled_ordinal(word: &str) -> bool {
+    SPELLED_ORDINALS.contains(&word)
+}
+
 pub fn check_line(line: &str) -> Option<String> {
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -250,7 +281,9 @@ pub fn check_line(line: &str) -> Option<String> {
                     .get(i + 1)
                     .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-'))
                     .unwrap_or(next_clean);
-                if is_blocking_numeral(next_clean, next_orig) {
+                if is_blocking_numeral(next_clean, next_orig)
+                    || (!CHECKLIST_TERMS.contains(&clean) && is_spelled_ordinal(next_clean))
+                {
                     return Some(clean.to_string());
                 }
             }
@@ -1251,7 +1284,7 @@ pub fn gather_candidates(lines: &[String], min_count: usize) -> Vec<Candidate> {
                 continue;
             }
             let nc = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
-            if !(is_numeral(nc) || is_num_range(nc)) {
+            if !(is_numeral(nc) || is_num_range(nc) || is_spelled_ordinal(nc)) {
                 continue;
             }
             // four or more digits read as a year, a hash, or a quantity, not the

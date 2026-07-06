@@ -26,6 +26,61 @@ fn positional_checklist_references_flag() {
     }
 }
 
+// host-lifecycle#4: a phase-synonym work-unit noun immediately followed by a
+// SPELLED ordinal ("wave one", "phase two") is the same band-name tell as the
+// arabic form ("wave 1") and blocks. This is the shape plan/0049 used to evade
+// the gate.
+#[test]
+fn spelled_ordinal_after_phase_synonym_flags() {
+    for line in [
+        "Wave one shipped",
+        "phase two of the work",
+        "sprint three planning",
+        "cycle four review",
+        "iteration five",
+        "increment one",
+        "episode two",
+        "leg first",
+        "wave twentieth",
+    ] {
+        assert!(check_line(line).is_some(), "should flag: {line}");
+    }
+}
+
+// The checklist nouns (steps/box/boxes) and the domain-heavy warn nouns
+// (part/chapter/round/level/section/step) do NOT take the spelled-ordinal shape,
+// because "steps one to six" and "part one" are ordinary English, not band tells.
+#[test]
+fn spelled_ordinal_after_checklist_or_warn_noun_stays_clean() {
+    for line in ["steps one to six", "box one", "boxes two closed"] {
+        assert!(check_line(line).is_none(), "checklist noun should not block: {line}");
+    }
+    for line in [
+        "part one of the book",
+        "chapter one",
+        "round one of boxing",
+        "level one",
+        "section one",
+        "step one of the tutorial",
+    ] {
+        assert!(check_line(line).is_none(), "warn noun should not block on spelled: {line}");
+        assert!(check_warn(line).is_none(), "warn noun should not warn on spelled: {line}");
+    }
+}
+
+// The gather lane surfaces a novel noun used with a spelled ordinal as an
+// emergent-tell candidate (plan/0035), the same as it does for the arabic form.
+#[test]
+fn gather_surfaces_a_novel_spelled_ordinal_band_noun() {
+    let lines: Vec<String> = (0..4).map(|_| "cadence one landed".to_string()).collect();
+    let cands = gather_candidates(&lines, 3);
+    assert!(
+        cands.iter().any(|c| c.word == "cadence"),
+        "gather should surface 'cadence': {:?}",
+        cands.iter().map(|c| &c.word).collect::<Vec<_>>()
+    );
+}
+
 // host#16 boundaries: the literal checklist mark, the disposition verb, and a
 // content-named reference carry no noun-plus-numeral, so they stay clean.
 #[test]
