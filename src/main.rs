@@ -316,6 +316,20 @@ fn escape_json(s: &str) -> String {
     out
 }
 
+/// Run the tracked-doc prose audit over `root` (host-lint's `run_docs`), extending
+/// `matches`. An I/O error walking the tree exits 2 rather than passing it silently.
+/// Shared by `--all`, `--docs`, and no-file `--prose` so one repo-wide prose audit
+/// backs all three and matches the host-lifecycle prose gate (host-lint#20).
+fn audit_tracked_docs(root: &str, allow: &[String], matches: &mut Vec<Match>) {
+    match run_docs(Path::new(root), allow, &load_ignore(root)) {
+        Ok(m) => matches.extend(m),
+        Err(e) => {
+            eprintln!("host-lint: {e}");
+            process::exit(2);
+        }
+    }
+}
+
 fn run_all_files(root: &str, allow: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         // No resolvable repository root: a clean exit here would be a fail-open
@@ -558,33 +572,34 @@ fn main() {
         // The subject (first line) becomes a squash-merge subject / gh title; a
         // decoration tell there blocks rather than warns. The body stays advisory.
         escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
+    } else if all_flag {
+        // `--all` is the comprehensive repo audit: the naming lane over tracked files
+        // plus the prose lane over tracked authored docs, so one repo-wide command
+        // matches the host-lifecycle naming + prose gate (host-lint#20). A `--prose`
+        // passed alongside `--all` is redundant and folded in here.
+        run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
+        audit_tracked_docs(&root, allow, &mut matches);
     } else if prose_flag {
-        // `--prose` with no files would scan nothing and exit clean — a fail-open
-        // for a script that trusts the exit code. Require at least one file, and
-        // treat an unreadable file as an error rather than a silent skip.
         if files.is_empty() {
-            eprintln!("host-lint: --prose needs one or more files");
-            process::exit(2);
-        }
-        for f in &files {
-            match fs::read_to_string(f) {
-                Ok(content) => scan_prose_text(&content, f, allow, &mut matches),
-                Err(e) => {
-                    eprintln!("host-lint: cannot read {f}: {e}");
-                    process::exit(2);
+            // `--prose` with no files audits the tracked authored docs (the repo-wide
+            // prose audit that matches the host-lifecycle prose gate, host-lint#20),
+            // rather than scanning nothing and exiting clean (a fail-open) or erroring.
+            audit_tracked_docs(&root, allow, &mut matches);
+        } else {
+            // `--prose <files>` scans exactly those files; an unreadable one is an
+            // error, not a silent skip.
+            for f in &files {
+                match fs::read_to_string(f) {
+                    Ok(content) => scan_prose_text(&content, f, allow, &mut matches),
+                    Err(e) => {
+                        eprintln!("host-lint: cannot read {f}: {e}");
+                        process::exit(2);
+                    }
                 }
             }
         }
-    } else if all_flag {
-        run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
     } else if docs_flag {
-        match run_docs(Path::new(&root), allow, &load_ignore(&root)) {
-            Ok(m) => matches.extend(m),
-            Err(e) => {
-                eprintln!("host-lint: {e}");
-                process::exit(2);
-            }
-        }
+        audit_tracked_docs(&root, allow, &mut matches);
     } else if log_flag {
         run_log(allow, strict, &mut matches);
     } else if files.is_empty() {

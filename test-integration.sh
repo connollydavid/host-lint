@@ -272,6 +272,26 @@ echo "$out" | grep -q "src.rs" && bad "--docs must not prose-scan code" || ok "-
 echo "$out" | grep -q "RECORD.md" && bad "--docs must honor .host-lintignore" || ok "--docs honors .host-lintignore"
 rm -rf "$docs"
 
+# --- host-lint#20: --prose (no args) and --all audit tracked docs, not silently clean ---
+echo ""
+echo "--- #20: --prose no-args and --all audit tracked docs ---"
+issue20=$(mktemp -d)
+git -C "$issue20" init -q
+printf '# Doc\n\nThe default becomes 0xFC, replacing 0xD8.\n' > "$issue20/d.md" # sentence-final ing-tail
+git -C "$issue20" add -A
+git -C "$issue20" -c user.name=t -c user.email=t@t commit -q -m "init"
+# --prose with no file args audits the tracked docs (matching host-lifecycle prose),
+# neither a silent clean nor an error.
+out=$(cd "$issue20" && "$BINARY_ABS" --prose 2>&1) && rc=0 || rc=$?
+{ [ "$rc" -eq 3 ] && echo "$out" | grep -q "d.md"; } && ok "--prose (no args) audits tracked docs" || bad "--prose (no args) audits tracked docs (rc=$rc)"
+# --all is the comprehensive audit: the naming lane AND the prose lane over the tracked set.
+out=$(cd "$issue20" && "$BINARY_ABS" --all 2>&1) && rc=0 || rc=$?
+{ [ "$rc" -eq 3 ] && echo "$out" | grep -q "d.md"; } && ok "--all runs the prose lane too" || bad "--all runs the prose lane too (rc=$rc)"
+# --all --prose behaves like --all rather than erroring.
+out=$(cd "$issue20" && "$BINARY_ABS" --all --prose 2>&1) && rc=0 || rc=$?
+{ [ "$rc" -eq 3 ] && echo "$out" | grep -q "d.md"; } && ok "--all --prose audits (not an error)" || bad "--all --prose audits (rc=$rc)"
+rm -rf "$issue20"
+
 # --- plan/0031: prose output is located (line:col) + fix-hinted ---
 echo ""
 echo "--- prose output: col + fix hint ---"
@@ -381,6 +401,25 @@ if [ -f "$HOOK_SCRIPT" ]; then
     printf '## Phase 1: setup\n' > "$nrepo/café.md"
     (cd "$nrepo" && git add "café.md" && git -c user.name=t -c user.email=t@t commit -q -m "add café" 2>/dev/null) \
         && bad "hook: a tell in a non-ASCII-named file must block" || ok "hook: a non-ASCII-named staged tell blocks"
+    # a staged submodule gitlink (mode 160000) carries no blob to lint; the hook must
+    # skip it and commit rather than fail closed on `git show`'s exit 128 (host-lint#18)
+    grepo="$tmpdir/hook-gitlink"
+    git init -q "$grepo"
+    cp "$HOOK_SCRIPT" "$grepo/.git/hooks/pre-commit"; cp "$BINARY_ABS" "$grepo/.git/hooks/host-lint"
+    chmod +x "$grepo/.git/hooks/pre-commit" "$grepo/.git/hooks/host-lint"
+    (cd "$grepo" && git update-index --add --cacheinfo 160000,1111111111111111111111111111111111111111,sub \
+        && git -c user.name=t -c user.email=t@t commit -q -m "add submodule") \
+        && ok "hook: a staged gitlink commits, not fail-closed" || bad "hook: a staged gitlink must not fail the commit closed"
+    # fail-closed preserved: a real tell staged alongside a gitlink still blocks
+    gtrepo="$tmpdir/hook-gitlink-tell"
+    git init -q "$gtrepo"
+    cp "$HOOK_SCRIPT" "$gtrepo/.git/hooks/pre-commit"; cp "$BINARY_ABS" "$gtrepo/.git/hooks/host-lint"
+    chmod +x "$gtrepo/.git/hooks/pre-commit" "$gtrepo/.git/hooks/host-lint"
+    printf '## Phase 1: setup\n' > "$gtrepo/plan.md"
+    (cd "$gtrepo" && git update-index --add --cacheinfo 160000,1111111111111111111111111111111111111111,sub \
+        && git add plan.md \
+        && git -c user.name=t -c user.email=t@t commit -q -m "gitlink plus tell" 2>/dev/null) \
+        && bad "hook: a tell alongside a gitlink must still block" || ok "hook: a tell alongside a gitlink still blocks"
 else
     bad "hook: pre-commit script not found at $HOOK_SCRIPT"
 fi

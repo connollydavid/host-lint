@@ -41,6 +41,11 @@ case "$(basename "$0")" in
         # Process substitution keeps the loop in this shell so EXIT_CODE survives.
         while IFS= read -r -d '' file; do
             [ -n "$file" ] || continue
+            # A submodule gitlink (mode 160000) carries no blob to lint; `git show
+            # ":$file"` exits 128 on it and, under pipefail, would fail the gate
+            # closed (host-lint#18). Skip it. A real blob whose `git show` fails
+            # still fails closed below, so the fail-closed hardening is intact.
+            [ "$(git ls-files --stage -- "$file" | awk '{print $1}')" = 160000 ] && continue
             # Lint the STAGED content (the bytes being committed), not the
             # working-tree copy: a tell staged then edited out unstaged would
             # otherwise be committed unseen. `--stdin-as` attributes the blob to
