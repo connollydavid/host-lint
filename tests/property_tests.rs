@@ -752,6 +752,66 @@ fn allowed_phrase_suppresses_a_dotted_code_warn() {
 }
 
 #[test]
+fn table_cell() {
+    // host-lint#21: a bare dotted code inside a markdown table cell is a data
+    // value; the column header carries the unit on another line. A numeral
+    // fused to a pipe or flanked by standalone ones is structurally a cell.
+    for line in [
+        "| A100 | 11.34 | 10.00 | 67.58 |",
+        "| latency_ms | 25.27 |",
+        "11.34 | 10.00",
+        "|11.34|",
+    ] {
+        assert!(check_warn(line).is_none(), "table cell should not warn: {line}");
+    }
+    // A bare dotted code in prose (no pipe) still warns: the skip is structural,
+    // not a blanket silence.
+    for line in ["as decided in 2.1", "exec tools (5.5)"] {
+        assert!(check_warn(line).is_some(), "prose dotted code should still warn: {line}");
+    }
+    // Precision: a real tell inside a table cell still flags, because the
+    // noun-gated flag tier (check_line) is location-independent.
+    for line in ["| Phase 2.1: auth | done |", "Sprint 3 | backlog"] {
+        assert!(check_line(line).is_some(), "noun-gated tell must still flag in a cell: {line}");
+    }
+}
+
+#[test]
+fn quantity_operators() {
+    // host-lint#21: a dotted code marked by an approximation or comparison
+    // operator, or a trailing multiplier, is a quantity, not a name.
+    for line in [
+        "NMSE ≈ 1.0",
+        "speedup ~2.2× over baseline",
+        "accuracy > 67.5",
+        "loss < 0.05",
+        "cost = 5.5 ms",
+        "≈1.0 here",
+        "ratio 2.2 ×",
+    ] {
+        assert!(check_warn(line).is_none(), "operator-marked quantity should not warn: {line}");
+    }
+    for line in ["as decided in 2.1", "exec tools (5.5)"] {
+        assert!(check_warn(line).is_some(), "plain dotted code should still warn: {line}");
+    }
+}
+
+#[test]
+fn compound_units() {
+    // host-lint#21: a dotted code followed by a slashed unit is a quantity.
+    for line in [
+        "throughput 11.34 t/s",
+        "cost 3.2 ms/token",
+        "latency 5.5 tok/s,",
+    ] {
+        assert!(check_warn(line).is_none(), "slashed-unit quantity should not warn: {line}");
+    }
+    for line in ["as decided in 2.1"] {
+        assert!(check_warn(line).is_some(), "plain dotted code should still warn: {line}");
+    }
+}
+
+#[test]
 fn allow_is_case_insensitive() {
     assert!(scan_one("Built for DOS 6.22 hosts", "doc.md", &["dos 6.22"]).is_empty());
 }

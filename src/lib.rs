@@ -140,6 +140,18 @@ fn is_dotted_code(word: &str) -> bool {
     parts.len() == 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
+// A slashed unit token ("t/s", "ms/token", "tok/s"): a unit, not a name. Used by
+// the bare-dotted-code rule to recognise a quantity whose unit is a compound a
+// slash joins (host-lint#21). Alphanumeric on both sides of the slash; a bare slash
+// or a trailing path is not a unit.
+fn is_compound_unit(tok: &str) -> bool {
+    let Some(slash) = tok.find('/') else {
+        return false;
+    };
+    tok[..slash].chars().any(|c| c.is_alphanumeric())
+        && tok[slash + 1..].chars().any(|c| c.is_alphanumeric())
+}
+
 pub fn is_review_code(word: &str) -> bool {
     // "#7" (issue-style number) or "b1" (a severity letter + number). A bare
     // numeral ("3") is NOT a code, so "review 3 files" stays clean.
@@ -398,9 +410,35 @@ pub fn check_warn(line: &str) -> Option<String> {
             if ow.ends_with('%') {
                 continue;
             }
+            // A dotted code inside a markdown table cell is a data value, not a
+            // name (host-lint#21): the column header that carries the unit sits on
+            // another line the token-local rule cannot see. A numeral fused to a
+            // pipe or flanked by standalone pipe tokens is structurally a cell, so
+            // it is skipped. The noun-gated flag tier is unaffected, so a real
+            // tell still flags inside a cell.
+            if ow.contains('|')
+                || (i > 0 && words[i - 1] == "|")
+                || matches!(words.get(i + 1), Some(&"|"))
+            {
+                continue;
+            }
+            // A dotted code carrying an approximation or comparison operator is a
+            // quantity, not a name (host-lint#21). The operator may be fused to the
+            // code or stand as a token before it; a trailing multiplier marks a
+            // quantity too.
+            const QTY_LEAD: &[char] = &['≈', '~', '>', '<', '≥', '≤', '±', '='];
+            if ow.chars().next().is_some_and(|c| QTY_LEAD.contains(&c))
+                || ow.ends_with('×')
+                || (i > 0
+                    && !words[i - 1].is_empty()
+                    && words[i - 1].chars().all(|c| QTY_LEAD.contains(&c)))
+                || words.get(i + 1).is_some_and(|n| n.starts_with('×'))
+            {
+                continue;
+            }
             if let Some(next) = words.get(i + 1) {
                 let nc = next.trim_matches(|c: char| !c.is_alphanumeric());
-                if UNITS.contains(&nc) {
+                if UNITS.contains(&nc) || is_compound_unit(next) {
                     continue;
                 }
             }
