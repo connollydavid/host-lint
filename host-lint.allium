@@ -44,6 +44,10 @@ entity Line {
     has_internal_code_as_name: Boolean
     has_review_code_name: Boolean
     has_bare_numeral_label: Boolean
+    -- a bare numeral that sits in a measurement/data position (a markdown table
+    -- cell, an approximation/comparison operator, a slashed compound unit, or a
+    -- LEXICON-declared domain unit): not a name, so it does not warn (host-lint#21).
+    is_data_position: Boolean
     has_decoration: Boolean
 }
 
@@ -121,7 +125,7 @@ rule DetectInternalCodeAsName {
 
 rule DetectBareNumeralLabel {
     when: line: Line.created
-    requires: line.has_bare_numeral_label and not line.has_phase_synonym_numeral
+    requires: line.has_bare_numeral_label and not line.has_phase_synonym_numeral and not line.is_data_position
     ensures: Match.created(line: line, term: "bare-numeral-label", severity: warn)
 }
 
