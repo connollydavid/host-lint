@@ -362,8 +362,14 @@ pub fn check_label_prefix(line: &str) -> Option<String> {
 
 // warn tier: the bare-numeral degenerate form with the noun elided — a
 // filing-system code noun followed by a numeral, or a bare dotted code used as
-// a name outside version/quantity contexts. Advisory only.
+// a name outside version/quantity contexts. Advisory only. The `_with_units`
+// form consults a project's declared domain units (host-lint#21); the plain
+// form is the no-units baseline the tests and embedders use.
 pub fn check_warn(line: &str) -> Option<String> {
+    check_warn_with_units(line, &[])
+}
+
+pub fn check_warn_with_units(line: &str, units: &[String]) -> Option<String> {
     let lower = line.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
     let orig: Vec<&str> = line.split_whitespace().collect();
@@ -438,7 +444,7 @@ pub fn check_warn(line: &str) -> Option<String> {
             }
             if let Some(next) = words.get(i + 1) {
                 let nc = next.trim_matches(|c: char| !c.is_alphanumeric());
-                if UNITS.contains(&nc) || is_compound_unit(next) {
+                if UNITS.contains(&nc) || is_compound_unit(next) || units.iter().any(|u| u.as_str() == nc) {
                     continue;
                 }
             }
@@ -544,6 +550,10 @@ fn is_coauthor_trailer(line: &str) -> bool {
 }
 
 pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
+    classify_line_with_units(line, markdown, &[])
+}
+
+pub fn classify_line_with_units(line: &str, markdown: bool, units: &[String]) -> Option<(Severity, String)> {
     if is_coauthor_trailer(line) {
         return None;
     }
@@ -558,7 +568,7 @@ pub fn classify_line(line: &str, markdown: bool) -> Option<(Severity, String)> {
             return Some((Severity::Flag, t));
         }
     }
-    if let Some(t) = check_warn(line) {
+    if let Some(t) = check_warn_with_units(line, units) {
         return Some((Severity::Warn, t));
     }
     if let Some(t) = check_code_label_prefix(line) {
@@ -678,6 +688,25 @@ pub fn parse_jira_keys(line: &str) -> Option<Vec<String>> {
     }
     let keys: Vec<String> = rest.split_whitespace().filter(|k| is_jira_key(k)).map(String::from).collect();
     if keys.is_empty() { None } else { Some(keys) }
+}
+
+/// Parse a `# host-lint: unit <TOKEN>` directive into the declared unit token
+/// (lowercased), or `None` for any other line. A unit declares a domain measurement
+/// token (GFLOPS, ppm, dB) so the bare-dotted-code rule treats a numeral followed by
+/// one as a quantity, not a name (host-lint#21). Comment-shaped, so the phrase parser
+/// ignores it — the same idiom as jira-key. A unit is a single whitespace-free token.
+pub fn parse_unit_directive(line: &str) -> Option<String> {
+    let body = line.trim().strip_prefix('#')?.trim();
+    let rest = body.strip_prefix("host-lint: unit")?;
+    if !rest.is_empty() && !rest.starts_with(|c: char| c.is_whitespace()) {
+        return None;
+    }
+    let mut parts = rest.split_whitespace();
+    let tok = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(tok.to_ascii_lowercase())
 }
 
 /// A bare tracker reference whose only provenance is a URL: `#N`, `owner/repo#N`,
@@ -803,6 +832,7 @@ pub struct Lexicon {
     pub phrases_lc: Vec<String>,
     pub strict: bool,
     pub jira_keys: Vec<String>,
+    pub units: Vec<String>,
     pub entries: Vec<LexiconEntry>,
 }
 
@@ -813,7 +843,7 @@ pub struct Lexicon {
 /// loader both the CLI and an embedder call, so the prose/`--docs` lane masks the same
 /// declared phrases everywhere.
 pub fn load_lexicon(root: &Path) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), entries: Vec::new() };
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new() };
     if root.as_os_str().is_empty() {
         return lex;
     }
@@ -821,18 +851,20 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
         Ok(c) => c,
         Err(_) => return lex,
     };
-    // Directives first (strict, jira-key), collected before any entry so an
+    // Directives first (strict, jira-key, unit), collected before any entry so an
     // entry's validation sees every declared key regardless of line order.
     for line in content.lines() {
         if is_strict_directive(line) {
             lex.strict = true;
         } else if let Some(keys) = parse_jira_keys(line) {
             lex.jira_keys.extend(keys);
+        } else if let Some(u) = parse_unit_directive(line) {
+            lex.units.push(u);
         }
     }
     // Then the entries, validated against the collected directives.
     for line in content.lines() {
-        if is_strict_directive(line) || parse_jira_keys(line).is_some() {
+        if is_strict_directive(line) || parse_jira_keys(line).is_some() || parse_unit_directive(line).is_some() {
             continue;
         }
         let Some(entry) = parse_lexicon_line(line) else { continue };
@@ -861,7 +893,7 @@ pub fn scan_text_with_allow(
     allow_lc: &[String],
     matches: &mut Vec<Match>,
 ) {
-    scan_text_with_allow_strict(input, source, allow_lc, false, matches);
+    scan_text_with_allow_strict(input, source, allow_lc, &[], false, matches);
 }
 
 // The info string of a markdown fence line (the text after ``` / ~~~), or `None`
@@ -891,6 +923,7 @@ pub fn scan_text_with_allow_strict(
     input: &str,
     source: &str,
     allow_lc: &[String],
+    units: &[String],
     strict: bool,
     matches: &mut Vec<Match>,
 ) {
@@ -924,7 +957,7 @@ pub fn scan_text_with_allow_strict(
             }
         }
         let scanned = mask_allowed(line, allow_lc);
-        if let Some((mut severity, term)) = classify_line(&scanned, markdown) {
+        if let Some((mut severity, term)) = classify_line_with_units(&scanned, markdown, units) {
             let mut cite = String::new();
             if strict && severity == Severity::Warn {
                 severity = Severity::Flag;

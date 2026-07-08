@@ -206,7 +206,7 @@ fn url_status(url: &str) -> Result<u32, String> {
     code.trim().parse::<u32>().map_err(|_| format!("bad status '{}'", code.trim()))
 }
 
-fn scan_file(path: &Path, allow: &[String], strict: bool, matches: &mut Vec<Match>) {
+fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matches: &mut Vec<Match>) {
     if !path.is_file() {
         return;
     }
@@ -221,7 +221,7 @@ fn scan_file(path: &Path, allow: &[String], strict: bool, matches: &mut Vec<Matc
         Ok(c) => c,
         Err(_) => return,
     };
-    scan_text_with_allow_strict(&content, path.to_string_lossy().as_ref(), allow, strict, matches);
+    scan_text_with_allow_strict(&content, path.to_string_lossy().as_ref(), allow, units, strict, matches);
 }
 
 fn output_text(matches: &[Match]) {
@@ -330,7 +330,7 @@ fn audit_tracked_docs(root: &str, allow: &[String], matches: &mut Vec<Match>) {
     }
 }
 
-fn run_all_files(root: &str, allow: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
+fn run_all_files(root: &str, allow: &[String], units: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         // No resolvable repository root: a clean exit here would be a fail-open
         // audit that scanned nothing. Fail closed.
@@ -374,7 +374,7 @@ fn run_all_files(root: &str, allow: &[String], strict: bool, ignore: &[String], 
         }
         // scan_file additionally skips non-files (tracked-but-deleted), CI files,
         // and unscannable extensions.
-        scan_file(&path, allow, strict, matches);
+        scan_file(&path, allow, units, strict, matches);
     }
 }
 
@@ -396,7 +396,7 @@ fn load_ignore(root: &str) -> Vec<String> {
     }
 }
 
-fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
+fn run_log(allow: &[String], units: &[String], strict: bool, matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
         .output()
@@ -422,7 +422,7 @@ fn run_log(allow: &[String], strict: bool, matches: &mut Vec<Match>) {
             None => (record, ""),
         };
         let label = if sha.len() >= 7 { &sha[..7] } else { sha };
-        scan_text_with_allow_strict(message, label, allow, strict, matches);
+        scan_text_with_allow_strict(message, label, allow, units, strict, matches);
     }
 }
 
@@ -535,6 +535,7 @@ fn main() {
     let root = repo_root();
     let lex = load_lexicon(Path::new(&root));
     let allow = lex.phrases_lc.as_slice();
+    let units = lex.units.as_slice();
     let strict = lex.strict;
     let mut matches = Vec::new();
 
@@ -557,7 +558,7 @@ fn main() {
                 eprintln!("host-lint: cannot read staged content of {path} as UTF-8: {e}");
                 process::exit(2);
             }
-            scan_text_with_allow_strict(&input, path, allow, strict, &mut matches);
+            scan_text_with_allow_strict(&input, path, allow, units, strict, &mut matches);
         }
     } else if stdin_flag {
         let mut input = String::new();
@@ -567,7 +568,7 @@ fn main() {
             process::exit(2);
         }
         // A stdin title/draft gets both naming and prose tells.
-        scan_text_with_allow_strict(&input, "stdin", allow, strict, &mut matches);
+        scan_text_with_allow_strict(&input, "stdin", allow, units, strict, &mut matches);
         scan_prose_text(&input, "stdin", allow, &mut matches);
         // The subject (first line) becomes a squash-merge subject / gh title; a
         // decoration tell there blocks rather than warns. The body stays advisory.
@@ -577,7 +578,7 @@ fn main() {
         // plus the prose lane over tracked authored docs, so one repo-wide command
         // matches the host-lifecycle naming + prose gate (host-lint#20). A `--prose`
         // passed alongside `--all` is redundant and folded in here.
-        run_all_files(&root, allow, strict, &load_ignore(&root), &mut matches);
+        run_all_files(&root, allow, units, strict, &load_ignore(&root), &mut matches);
         audit_tracked_docs(&root, allow, &mut matches);
     } else if prose_flag {
         if files.is_empty() {
@@ -601,7 +602,7 @@ fn main() {
     } else if docs_flag {
         audit_tracked_docs(&root, allow, &mut matches);
     } else if log_flag {
-        run_log(allow, strict, &mut matches);
+        run_log(allow, units, strict, &mut matches);
     } else if files.is_empty() {
         eprintln!("Usage: host-lint [--stdin] [--prose] [--docs] [--json] [--all] [--log] [files...]");
         process::exit(2);
@@ -623,7 +624,7 @@ fn main() {
             if path_ignored(&rel, &ignore) {
                 continue;
             }
-            scan_file(Path::new(f), allow, strict, &mut matches);
+            scan_file(Path::new(f), allow, units, strict, &mut matches);
         }
     }
 

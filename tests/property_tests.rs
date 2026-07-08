@@ -1,9 +1,10 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
-    check_warn, classify_line, gather_candidates,
+    check_warn, check_warn_with_units, classify_line, gather_candidates,
     escalate_subject_decoration, is_numeral, is_strict_directive, parse_jira_keys,
-    parse_lexicon_line, path_ignored, scan_prose_text, scan_text, scan_text_with_allow,
-    scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry, Severity, WARN_NOUNS,
+    parse_lexicon_line, parse_unit_directive, path_ignored, scan_prose_text, scan_text,
+    scan_text_with_allow, scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry,
+    Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
 use std::fs;
@@ -812,6 +813,31 @@ fn compound_units() {
 }
 
 #[test]
+fn declared_units() {
+    // host-lint#21: a domain unit declared in the LEXICON marks a following
+    // numeral as a quantity, not a name.
+    let gflops = "gflops".to_string();
+    assert!(
+        check_warn_with_units("312.4 GFLOPS sustained", &[gflops.clone()]).is_none(),
+        "a numeral before a declared unit should not warn"
+    );
+    // With no units declared, the same line warns: GFLOPS is not a built-in unit.
+    assert!(
+        check_warn_with_units("312.4 GFLOPS sustained", &[]).is_some(),
+        "an undeclared domain unit should still warn"
+    );
+}
+
+#[test]
+fn parse_unit_directive_reads_a_declared_unit() {
+    assert_eq!(parse_unit_directive("# host-lint: unit GFLOPS"), Some("gflops".to_string()));
+    assert_eq!(parse_unit_directive("# host-lint: unit dB"), Some("db".to_string()));
+    assert_eq!(parse_unit_directive("GFLOPS"), None, "not a directive");
+    assert_eq!(parse_unit_directive("# host-lint: unit"), None, "no token");
+    assert_eq!(parse_unit_directive("# host-lint: unit a b"), None, "two tokens rejected");
+}
+
+#[test]
 fn allow_is_case_insensitive() {
     assert!(scan_one("Built for DOS 6.22 hosts", "doc.md", &["dos 6.22"]).is_empty());
 }
@@ -1014,7 +1040,7 @@ fn unclosed_ignore_fence_fails_loud() {
     // every later line silently. It must surface an unclosed-fence flag instead.
     let text = "intro line\n```host-lint:ignore\ncited Phase 1 reference\nPhase 2 ships here\n";
     let mut m = Vec::new();
-    scan_text_with_allow_strict(text, "doc.md", &[], false, &mut m);
+    scan_text_with_allow_strict(text, "doc.md", &[], &[], false, &mut m);
     assert!(
         m.iter().any(|x| x.term == "unclosed-ignore-fence" && x.severity == Severity::Flag),
         "unclosed ignore fence should fail loud: {:?}",
@@ -1029,7 +1055,7 @@ fn longer_ignore_fence_wraps_an_inner_code_fence() {
     // does not leak back to the linter. The longer outer fence closes it.
     let text = "````host-lint:ignore\nExample:\n```\nPhase 2 was the cleanup\n```\n````\nclean tail\n";
     let mut m = Vec::new();
-    scan_text_with_allow_strict(text, "doc.md", &[], false, &mut m);
+    scan_text_with_allow_strict(text, "doc.md", &[], &[], false, &mut m);
     assert!(
         m.is_empty(),
         "quarantined content leaked: {:?}",
@@ -1211,7 +1237,7 @@ fn lexicon_strict_escalates_an_undeclared_warn_to_a_flag() {
     let scan = |strict: bool, allow: &[&str]| {
         let allow_lc: Vec<String> = allow.iter().map(|s| s.to_ascii_lowercase()).collect();
         let mut m = Vec::new();
-        scan_text_with_allow_strict("see Decision 2.1 here", "README.md", &allow_lc, strict, &mut m);
+        scan_text_with_allow_strict("see Decision 2.1 here", "README.md", &allow_lc, &[], strict, &mut m);
         m
     };
     assert_eq!(scan(false, &[]).first().map(|m| m.severity), Some(Severity::Warn));
@@ -1225,7 +1251,7 @@ fn lexicon_masking_clears_a_cited_tracker_ref() {
     // leaves "finding " with no code, so the line is clean.
     let allow = vec!["#7".to_string()];
     let mut m = Vec::new();
-    scan_text_with_allow_strict("see finding #7 in the log", "doc.md", &allow, true, &mut m);
+    scan_text_with_allow_strict("see finding #7 in the log", "doc.md", &allow, &[], true, &mut m);
     assert!(m.is_empty(), "cited #7 should mask the review-code flag: {:?}", m.iter().map(|x| &x.term).collect::<Vec<_>>());
 }
 
@@ -1235,7 +1261,7 @@ fn lexicon_masking_clears_a_cited_tracker_ref() {
 fn host_lint_ignore_block_skips_naming_tells_in_markdown() {
     let scan = |text: &str, src: &str| {
         let mut m = Vec::new();
-        scan_text_with_allow_strict(text, src, &[], false, &mut m);
+        scan_text_with_allow_strict(text, src, &[], &[], false, &mut m);
         m
     };
     // Inside a host-lint:ignore block: skipped (the literal-citation quarantine).
@@ -1265,7 +1291,7 @@ fn host_lint_ignore_block_skips_naming_tells_in_markdown() {
 fn host_lint_ignore_regions_flank_a_still_scanned_code_block() {
     let scan = |text: &str, src: &str| {
         let mut m = Vec::new();
-        scan_text_with_allow_strict(text, src, &[], false, &mut m);
+        scan_text_with_allow_strict(text, src, &[], &[], false, &mut m);
         m
     };
     // ignore(Phase 1) | regular rust(Phase 2) | ignore(Phase 3).
