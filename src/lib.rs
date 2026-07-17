@@ -320,7 +320,7 @@ fn roman_value(s: &str) -> Option<u32> {
 // A real phase/stage/sprint ordinal in Roman never exceeds this; every ordinary
 // uppercase abbreviation that is also canonical Roman carries C/D/M or is a large
 // two-letter form, so it exceeds it (DC=600, CM=900, MM=2000, MD=1500, DIV=504,
-// XL=40, XC=90, LIV=54). The bound is what keeps "Phase IV" blocking while "phase
+// XL=40, XC=90, LIV=54). The bound is what keeps an uppercase IV after "Phase" blocking while "phase
 // DC" / "wave XL" do not.
 const MAX_BLOCKING_ROMAN: u32 = 39;
 
@@ -328,7 +328,7 @@ const MAX_BLOCKING_ROMAN: u32 = 39;
 // numeral: an arabic integer or single decimal ("2", "5.5"), a checklist range
 // ("4-8"), or a Roman numeral written uppercase whose value is a plausible ordinal
 // (<= XXXIX). Roman is bounded, not dropped, so a roman-numbered phase tell
-// ("Phase IV", "Stage XII") still blocks and cannot smuggle past the gate, while
+// (an uppercase IV or XII after the tell noun) still blocks and cannot smuggle past the gate, while
 // the ordinary uppercase abbreviations that happen to be canonical Roman (DC, CM,
 // MM, MD, DIV, XL, ...) do not false-flag in a tell noun's home domain — they all
 // exceed the ordinal bound. A single letter (I, V, X) is the pronoun/identifier
@@ -394,7 +394,7 @@ pub fn check_line(line: &str) -> Option<String> {
             // scope: a legitimate glued term has no numeral-free LEXICON prefix to
             // declare, so it could not be escaped, and it is the same class as a
             // noun-glued numeral. The original-case token lets a Roman numeral
-            // require uppercase ("Phase IV" blocks, "phase iv" does not).
+            // require uppercase (IV after "Phase" blocks, "phase iv" does not).
             if let Some(next) = words.get(i + 1) {
                 let next_clean = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
                 let next_orig = orig_words
@@ -878,8 +878,8 @@ pub fn validate_lexicon_entry(e: &LexiconEntry, jira_keys: &[String]) -> Result<
             Some(u) => u,
         };
         // Offline provenance: the cited URL must actually reference the same number,
-        // so a phantom '#999' cited to an unrelated link cannot mask a real
-        // 'review #999' (plan/0055). Liveness (the link resolves) still needs the
+        // so a phantom '#999' cited to an unrelated link cannot mask a real '#999'
+        // sitting after the review noun (plan/0055). Liveness (the link resolves) still needs the
         // explicit `lexicon --check-urls` lane; a network fetch does not gate by default.
         let number: String = e.phrase.chars().filter(|c| c.is_ascii_digit()).collect();
         if !number.is_empty() && !url.contains(&number) {
