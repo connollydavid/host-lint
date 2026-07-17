@@ -5,6 +5,14 @@ edition = "2021"
 description = "Detect phase-synonym agentic tells in commits, headers, and comments"
 license = "Unlicense"
 
+# The workspace carries the external packs beside the core (host-lint#22,
+# workspace-split): lockstep versions, one lockfile, one vendored bundle.
+# default-members lists both so a bare `cargo build` produces the pack binary
+# too — a root-package workspace would otherwise build only the root.
+[workspace]
+members = ["host-lint-ffmpeg"]
+default-members = [".", "host-lint-ffmpeg"]
+
 [dependencies]
 host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "9470b81c9c851b0fedc872203437ea0de60b7f62" }
 

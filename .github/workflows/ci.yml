@@ -47,17 +47,24 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Stage binary
+      - name: Stage binaries
         shell: bash
         run: |
           bin="target/${{ matrix.target }}/release/host-lint"
           [ -f "$bin.exe" ] && bin="$bin.exe"
           cp "$bin" "${{ matrix.name }}"
+          # The ffmpeg pack ships beside the core from the same workspace build
+          # (host-lint#22, workspace-split), named by the same platform scheme.
+          pack="target/${{ matrix.target }}/release/host-lint-ffmpeg"
+          [ -f "$pack.exe" ] && pack="$pack.exe"
+          cp "$pack" "$(echo "${{ matrix.name }}" | sed 's/^host-lint-/host-lint-ffmpeg-/')"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.name }}
+          path: |
+            ${{ matrix.name }}
+            host-lint-ffmpeg-*
 
   conformance:
     runs-on: ubuntu-latest

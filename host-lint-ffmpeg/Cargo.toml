@@ -1,0 +1,9 @@
+[package]
+name = "host-lint-ffmpeg"
+version = "0.14.2"
+edition = "2021"
+description = "FFmpeg commit-rule pack for host-lint: the upstream commit and patch rules as a checkable corpus"
+license = "Unlicense"
+
+[dependencies]
+host-lint = { path = ".." }

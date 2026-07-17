@@ -468,6 +468,30 @@ printf 'plain text\n' > "$packdir/fake"
 (cd "$packdir" && "$BINARY_ABS" fake >/dev/null 2>&1) && ok "pack: bare name stays a file argument" || bad "pack: bare name stays a file argument"
 PATH="$packdir:$PATH" "$BINARY_ABS" packs 2>/dev/null | grep -qx 'fake' && ok "packs: lists installed packs" || bad "packs: lists installed packs"
 
+# --- ffmpeg pack skeleton: dispatch + engine handshake (host-lint#22) ---
+echo ""
+echo "--- ffmpeg pack skeleton ---"
+# The pack binary sits beside the core locally (target/release) and under a
+# platform-suffixed asset name in CI's download dir; take either.
+PACK_SRC=$(ls "$(dirname "$BINARY_ABS")"/host-lint-ffmpeg* 2>/dev/null | head -1)
+if [ -n "$PACK_SRC" ]; then
+    pdir="$tmpdir/ffmpeg-pack"
+    mkdir -p "$pdir"
+    cp "$BINARY_ABS" "$pdir/host-lint"
+    cp "$PACK_SRC" "$pdir/host-lint-ffmpeg"
+    chmod +x "$pdir/host-lint" "$pdir/host-lint-ffmpeg"
+    # Dispatched through the core the versions match, so the skeleton reaches
+    # its usage error (exit 2, no lanes yet), never a hollow clean exit.
+    out=$("$pdir/host-lint" pack ffmpeg 2>&1) && rc=0 || rc=$?
+    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'no lanes are implemented'; } && ok "pack ffmpeg: dispatch reaches the skeleton" || bad "pack ffmpeg: dispatch (rc=$rc: $out)"
+    # A skewed core version refuses to run (host-lint#23, strict handshake).
+    out=$(HOST_LINT_VERSION=999.0.0 "$pdir/host-lint-ffmpeg" 2>&1) && rc=0 || rc=$?
+    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'skew'; } && ok "pack ffmpeg: version skew refuses" || bad "pack ffmpeg: skew (rc=$rc: $out)"
+    "$pdir/host-lint" packs 2>/dev/null | grep -qx 'ffmpeg' && ok "packs: lists the sibling ffmpeg pack" || bad "packs: lists the sibling ffmpeg pack"
+else
+    bad "ffmpeg pack binary not found beside $BINARY_ABS"
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="
