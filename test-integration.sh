@@ -119,6 +119,21 @@ $BINARY "$tmpdir/plan.md" >/dev/null 2>&1 && ok "## named header" || bad "## nam
 printf '# 3 retries by default\n' > "$tmpdir/script.sh"
 $BINARY "$tmpdir/script.sh" >/dev/null 2>&1 && ok "numeral comment in .sh" || bad "numeral comment in .sh"
 
+# --- host-lint#23: an explicit file argument that cannot be scanned fails closed ---
+echo ""
+echo "--- Explicit file args fail closed (host-lint#23) ---"
+$BINARY "$tmpdir/definitely-missing.md" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 2 ] && ok "missing file arg exits 2" || bad "missing file arg exits 2 (rc=$rc)"
+out=$($BINARY "$tmpdir/definitely-missing.md" 2>&1) || true
+echo "$out" | grep -q "definitely-missing.md" && ok "diagnostic names the path" || bad "diagnostic names the path (got: $out)"
+mkdir -p "$tmpdir/adir"
+$BINARY "$tmpdir/adir" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 2 ] && ok "directory arg exits 2" || bad "directory arg exits 2 (rc=$rc)"
+# The deliberate skips stay policy, not errors: an unscannable extension passes.
+printf 'not text\n' > "$tmpdir/pic.png"
+$BINARY "$tmpdir/pic.png" >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 0 ] && ok "unscannable extension stays a policy skip" || bad "unscannable extension policy skip (rc=$rc)"
+
 # --- JSON output test ---
 echo ""
 echo "--- JSON output ---"

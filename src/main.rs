@@ -624,7 +624,40 @@ fn main() {
             if path_ignored(&rel, &ignore) {
                 continue;
             }
-            scan_file(Path::new(f), allow, units, strict, &mut matches);
+            // An explicit file argument that cannot be scanned fails closed (exit 2)
+            // rather than passing silently: a typo'd path reported clean is a
+            // fail-open audit (host-lint#23). The deliberate skips stay silent
+            // because they are policy, not errors: an ignored path above, and the
+            // CI-file and unscannable-extension skips below. `--all` keeps its own
+            // silent non-file skip (tracked-but-deleted), which is likewise policy.
+            let path = Path::new(f);
+            let meta = match fs::metadata(path) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("host-lint: cannot scan {f}: {e}");
+                    process::exit(2);
+                }
+            };
+            if !meta.is_file() {
+                eprintln!("host-lint: cannot scan {f}: not a regular file");
+                process::exit(2);
+            }
+            if is_ci_file(f) {
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !is_scannable(ext) {
+                continue;
+            }
+            match fs::read_to_string(path) {
+                Ok(content) => {
+                    scan_text_with_allow_strict(&content, f, allow, units, strict, &mut matches)
+                }
+                Err(e) => {
+                    eprintln!("host-lint: cannot read {f}: {e}");
+                    process::exit(2);
+                }
+            }
         }
     }
 
