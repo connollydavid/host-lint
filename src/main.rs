@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::{self, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use host_lint::{Match, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
@@ -206,6 +206,103 @@ fn url_status(url: &str) -> Result<u32, String> {
     code.trim().parse::<u32>().map_err(|_| format!("bad status '{}'", code.trim()))
 }
 
+// `host-lint pack <name> [args...]` dispatches to an external pack binary
+// (`host-lint-<name>`). A reserved verb, never a bare name: the CLI already
+// gives the bare-argument position to file paths, and a pack name can collide
+// with a real file (`ffmpeg` names a build artifact at the root of the very
+// tree the ffmpeg pack targets — host-lint#23). Resolution is beside the
+// running binary first (a hook-installed pair travels together), then PATH.
+// The child's exit code passes through unchanged so the 0/1/2/3 verdict
+// contract holds across packs, and the core exports HOST_LINT_VERSION so the
+// pack can refuse a version skew. Always exits.
+fn run_pack(args: &[String]) -> ! {
+    let name = match args.first().filter(|n| {
+        !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    }) {
+        Some(n) => n,
+        None => {
+            eprintln!("usage: host-lint pack <name> [args...]   (runs host-lint-<name>; `host-lint packs` lists those installed)");
+            process::exit(2);
+        }
+    };
+    let bin = format!("host-lint-{name}");
+    // Beside the running binary first (including the Windows asset name); a
+    // plain program name falls through to the OS PATH search in spawn.
+    let program: PathBuf = env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join(&bin)))
+        .into_iter()
+        .flat_map(|p| [p.with_extension("exe"), p.clone()])
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(&bin));
+    match process::Command::new(&program)
+        .args(&args[1..])
+        .env("HOST_LINT_VERSION", env!("CARGO_PKG_VERSION"))
+        .status()
+    {
+        // A child killed by a signal has no code; fail closed rather than clean.
+        Ok(status) => process::exit(status.code().unwrap_or(2)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            eprintln!("host-lint: no pack '{name}': install {bin} beside host-lint or on PATH");
+            process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("host-lint: cannot run {bin}: {e}");
+            process::exit(2);
+        }
+    }
+}
+
+// `host-lint packs` lists the pack binaries installed beside the running core
+// or on PATH, one bare name per line (the `host-lint-` prefix and any `.exe`
+// suffix stripped). Discovery only; installing a pack is a release's job.
+// Always exits 0.
+fn run_packs_list() -> ! {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = env::current_exe() {
+        if let Some(d) = exe.parent() {
+            dirs.push(d.to_path_buf());
+        }
+    }
+    if let Some(path) = env::var_os("PATH") {
+        dirs.extend(env::split_paths(&path));
+    }
+    let mut names: Vec<String> = Vec::new();
+    for d in dirs {
+        let Ok(entries) = fs::read_dir(&d) else { continue };
+        for e in entries.flatten() {
+            let fname = e.file_name();
+            let Some(fname) = fname.to_str() else { continue };
+            let Some(rest) = fname.strip_prefix("host-lint-") else { continue };
+            let name = rest.strip_suffix(".exe").unwrap_or(rest);
+            if name.is_empty() || !e.path().is_file() {
+                continue;
+            }
+            // On unix an installed pack is executable; a stray same-named file
+            // (a log, a note) is not a pack and is not listed.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if e.metadata().map(|m| m.permissions().mode() & 0o111 == 0).unwrap_or(true) {
+                    continue;
+                }
+            }
+            if !names.iter().any(|n| n == name) {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names.sort();
+    if names.is_empty() {
+        println!("no packs installed (a pack is a host-lint-<name> binary beside host-lint or on PATH)");
+    } else {
+        for n in &names {
+            println!("{n}");
+        }
+    }
+    process::exit(0);
+}
+
 fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matches: &mut Vec<Match>) {
     if !path.is_file() {
         return;
@@ -401,6 +498,16 @@ fn main() {
     // `gather` is a discovery subcommand (plan/0035), not a scan flag.
     if args.get(1).map(String::as_str) == Some("gather") {
         run_gather(&repo_root());
+    }
+
+    // `pack` and `packs` are the external-pack dispatch and discovery verbs
+    // (host-lint#22): reserved names, so a pack can never collide with a file
+    // argument, and no bare name ever dispatches.
+    if args.get(1).map(String::as_str) == Some("pack") {
+        run_pack(&args[2..]);
+    }
+    if args.get(1).map(String::as_str) == Some("packs") {
+        run_packs_list();
     }
 
     let mut stdin_flag = false;

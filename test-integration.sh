@@ -439,6 +439,35 @@ else
     bad "hook: pre-commit script not found at $HOOK_SCRIPT"
 fi
 
+# --- pack dispatch: the reserved verb (host-lint#22 revised sequence) ---
+echo ""
+echo "--- pack dispatch ---"
+packdir="$tmpdir/packs"
+mkdir -p "$packdir"
+cat > "$packdir/host-lint-fake" <<'EOF'
+#!/bin/sh
+echo "fake-pack args=$* HOST_LINT_VERSION=$HOST_LINT_VERSION"
+exit "${FAKE_RC:-0}"
+EOF
+chmod +x "$packdir/host-lint-fake"
+out=$(PATH="$packdir:$PATH" "$BINARY_ABS" pack fake alpha beta 2>&1) && rc=0 || rc=$?
+{ [ "$rc" -eq 0 ] && echo "$out" | grep -q 'args=alpha beta'; } && ok "pack: args pass through" || bad "pack: args pass through (rc=$rc: $out)"
+echo "$out" | grep -qE 'HOST_LINT_VERSION=[0-9]+\.[0-9]+\.[0-9]+' && ok "pack: HOST_LINT_VERSION exported" || bad "pack: HOST_LINT_VERSION exported ($out)"
+for want in 1 3; do
+    FAKE_RC=$want PATH="$packdir:$PATH" "$BINARY_ABS" pack fake >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq "$want" ] && ok "pack: exit $want passes through" || bad "pack: exit $want passes through (rc=$rc)"
+done
+out=$(PATH="$packdir:$PATH" "$BINARY_ABS" pack nosuchpack 2>&1) && rc=0 || rc=$?
+{ [ "$rc" -eq 2 ] && echo "$out" | grep -q 'host-lint-nosuchpack'; } && ok "pack: missing pack exits 2 with install hint" || bad "pack: missing pack (rc=$rc: $out)"
+"$BINARY_ABS" pack >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" -eq 2 ] && ok "pack: no name is a usage error" || bad "pack: no name usage error (rc=$rc)"
+# The collision the reserved verb exists for (host-lint#23): a name like `fake`
+# is a pack to the verb and a plain file argument to the bare CLI.
+printf 'plain text\n' > "$packdir/fake"
+(cd "$packdir" && PATH="$packdir:$PATH" "$BINARY_ABS" pack fake 2>&1 | grep -q 'fake-pack') && ok "pack: verb dispatches despite a same-named file" || bad "pack: verb dispatches despite a same-named file"
+(cd "$packdir" && "$BINARY_ABS" fake >/dev/null 2>&1) && ok "pack: bare name stays a file argument" || bad "pack: bare name stays a file argument"
+PATH="$packdir:$PATH" "$BINARY_ABS" packs 2>/dev/null | grep -qx 'fake' && ok "packs: lists installed packs" || bad "packs: lists installed packs"
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="
