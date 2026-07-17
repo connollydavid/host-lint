@@ -130,6 +130,114 @@ pub fn verdict_code(matches: &[Match]) -> i32 {
     }
 }
 
+/// The engine version an external pack matches at runtime: the dispatching core
+/// exports it as `HOST_LINT_VERSION`, the pack compares it against the version it
+/// was built with, and a major/minor skew refuses to run (host-lint#23: a
+/// may-warn handshake fails open the way a stale hook-copied binary does).
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// === The reporting surface: how a set of matches renders (host-lint#22) ===
+//
+// Lives in the lib so the core binary and an external pack render findings
+// identically: one location format, one severity vocabulary, one JSON shape.
+
+/// A mechanical rewrite hint for the tells a weak agent can fix by a known edit,
+/// keyed on the tell id (and the matched character for decoration). Judgement
+/// tropes carry no hint, so only mechanically-fixable tells get one.
+pub fn fix_hint(term: &str, text: &str) -> Option<&'static str> {
+    match term {
+        "decoration" => Some(match text {
+            "—" | "–" => "replace with a comma, period, or parentheses",
+            "“" | "”" | "‘" | "’" => "use a straight quote",
+            "→" => "replace with a word (to, then, leads to)",
+            _ => "rewrite as plain punctuation",
+        }),
+        _ => None,
+    }
+}
+
+/// Render matches to stderr, one line each: `file:line[:col]: [severity:] text
+/// (term[ — cite])[ [fix: hint]]`. The human-facing form the CLI prints; a pack
+/// binary prints through this so its findings read identically.
+pub fn output_text(matches: &[Match]) {
+    for m in matches {
+        let loc = if m.col > 0 {
+            format!("{}:{}:{}", m.file, m.line, m.col)
+        } else {
+            format!("{}:{}", m.file, m.line)
+        };
+        let tag = if m.cite.is_empty() {
+            m.term.clone()
+        } else {
+            format!("{} — {}", m.term, m.cite)
+        };
+        let fix = fix_hint(&m.term, &m.text)
+            .map(|f| format!(" [fix: {}]", f))
+            .unwrap_or_default();
+        match m.severity {
+            Severity::Warn => eprintln!("{}: warning: {} ({}){}", loc, m.text, tag, fix),
+            Severity::Flag => eprintln!("{}: {} ({}){}", loc, m.text, tag, fix),
+            Severity::Note => eprintln!("{}: note: {} ({})", loc, m.text, tag),
+        }
+    }
+}
+
+/// Render matches as a JSON array on stdout, the machine-facing form.
+pub fn output_json(matches: &[Match]) {
+    println!("{}", matches_json(matches));
+}
+
+/// The JSON array itself, for an embedder that routes it somewhere other than
+/// stdout.
+pub fn matches_json(matches: &[Match]) -> String {
+    let mut out = String::from("[\n");
+    for (i, m) in matches.iter().enumerate() {
+        out.push_str("  {");
+        out.push_str(&format!("\"file\": \"{}\", ", escape_json(&m.file)));
+        out.push_str(&format!("\"line\": {}, ", m.line));
+        out.push_str(&format!("\"col\": {}, ", m.col));
+        out.push_str(&format!("\"text\": \"{}\", ", escape_json(&m.text)));
+        out.push_str(&format!("\"term\": \"{}\", ", escape_json(&m.term)));
+        let severity = match m.severity {
+            Severity::Warn => "warn",
+            Severity::Flag => "flag",
+            Severity::Note => "note",
+        };
+        out.push_str(&format!("\"severity\": \"{}\"", severity));
+        if let Some(f) = fix_hint(&m.term, &m.text) {
+            out.push_str(&format!(", \"fix\": \"{}\"", escape_json(f)));
+        }
+        if !m.cite.is_empty() {
+            out.push_str(&format!(", \"cite\": \"{}\"", escape_json(&m.cite)));
+        }
+        out.push('}');
+        if i < matches.len() - 1 {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push(']');
+    out
+}
+
+fn escape_json(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            // Any other control character (0x00-0x1F) must be escaped, or a line
+            // carrying a raw ESC/NUL byte produces invalid JSON.
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Re-exported from `host-grammar` so the checker (here) and the generator
 /// (`host-lifecycle`) share one definition of a numeral.
 pub use host_grammar::is_numeral;

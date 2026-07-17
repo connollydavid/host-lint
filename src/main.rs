@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::process;
 
-use host_lint::{Match, Severity, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry};
+use host_lint::{Match, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -222,98 +222,6 @@ fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matc
         Err(_) => return,
     };
     scan_text_with_allow_strict(&content, path.to_string_lossy().as_ref(), allow, units, strict, matches);
-}
-
-fn output_text(matches: &[Match]) {
-    for m in matches {
-        let loc = if m.col > 0 {
-            format!("{}:{}:{}", m.file, m.line, m.col)
-        } else {
-            format!("{}:{}", m.file, m.line)
-        };
-        let tag = if m.cite.is_empty() {
-            m.term.clone()
-        } else {
-            format!("{} — {}", m.term, m.cite)
-        };
-        let fix = fix_hint(&m.term, &m.text)
-            .map(|f| format!(" [fix: {}]", f))
-            .unwrap_or_default();
-        match m.severity {
-            Severity::Warn => eprintln!("{}: warning: {} ({}){}", loc, m.text, tag, fix),
-            Severity::Flag => eprintln!("{}: {} ({}){}", loc, m.text, tag, fix),
-            Severity::Note => eprintln!("{}: note: {} ({})", loc, m.text, tag),
-        }
-    }
-}
-
-// A mechanical rewrite hint for the tropes a weak agent can fix by a known edit, keyed
-// on the tell id (and the matched character for decoration). Judgement tropes — reword
-// a sentence — carry no hint, so only mechanically-fixable tells get one.
-fn fix_hint(term: &str, text: &str) -> Option<&'static str> {
-    match term {
-        "decoration" => Some(match text {
-            "—" | "–" => "replace with a comma, period, or parentheses",
-            "“" | "”" | "‘" | "’" => "use a straight quote",
-            "→" => "replace with a word (to, then, leads to)",
-            _ => "rewrite as plain punctuation",
-        }),
-        _ => None,
-    }
-}
-
-fn output_json(matches: &[Match]) {
-    let json = serde_json_like(matches);
-    println!("{}", json);
-}
-
-fn serde_json_like(matches: &[Match]) -> String {
-    let mut out = String::from("[\n");
-    for (i, m) in matches.iter().enumerate() {
-        out.push_str("  {");
-        out.push_str(&format!("\"file\": \"{}\", ", escape_json(&m.file)));
-        out.push_str(&format!("\"line\": {}, ", m.line));
-        out.push_str(&format!("\"col\": {}, ", m.col));
-        out.push_str(&format!("\"text\": \"{}\", ", escape_json(&m.text)));
-        out.push_str(&format!("\"term\": \"{}\", ", escape_json(&m.term)));
-        let severity = match m.severity {
-            Severity::Warn => "warn",
-            Severity::Flag => "flag",
-            Severity::Note => "note",
-        };
-        out.push_str(&format!("\"severity\": \"{}\"", severity));
-        if let Some(f) = fix_hint(&m.term, &m.text) {
-            out.push_str(&format!(", \"fix\": \"{}\"", escape_json(f)));
-        }
-        if !m.cite.is_empty() {
-            out.push_str(&format!(", \"cite\": \"{}\"", escape_json(&m.cite)));
-        }
-        out.push('}');
-        if i < matches.len() - 1 {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push(']');
-    out
-}
-
-fn escape_json(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            // Any other control character (0x00-0x1F) must be escaped, or a line
-            // carrying a raw ESC/NUL byte produces invalid JSON.
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 /// Run the tracked-doc prose audit over `root` (host-lint's `run_docs`), extending
