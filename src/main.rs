@@ -14,7 +14,21 @@ const IGNORE_FILE: &str = ".host-lintignore";
 fn repo_root() -> String {
     env::var("GIT_DIR")
         .ok()
-        .and_then(|d| Path::new(&d).parent().and_then(|p| p.to_str()).map(String::from))
+        .and_then(|d| {
+            let dir = Path::new(&d);
+            // A linked-worktree gitdir (<store>/worktrees/<name>) carries a
+            // `gitdir` file naming the worktree's `.git` link; the worktree root
+            // is that file's parent. The naive parent of GIT_DIR would land
+            // inside the store and drop the ignore list and LEXICON there
+            // (host-lint#25).
+            match fs::read_to_string(dir.join("gitdir")) {
+                Ok(target) => Path::new(target.trim())
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .map(String::from),
+                Err(_) => dir.parent().and_then(|p| p.to_str()).map(String::from),
+            }
+        })
         // A relative GIT_DIR (".git", which `git --git-dir=.git commit` exports)
         // has an empty parent; an empty root would drop the LEXICON and downgrade
         // strict to advisory, so fall through to the working directory instead.

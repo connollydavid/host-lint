@@ -492,6 +492,31 @@ else
     bad "ffmpeg pack binary not found beside $BINARY_ABS"
 fi
 
+# --- repo_root under a linked-worktree GIT_DIR (host-lint#25) ---
+echo ""
+echo "--- repo_root under a linked-worktree GIT_DIR ---"
+# hooks in a linked worktree run with GIT_DIR=<store>/worktrees/<name>; the root
+# (and with it .host-lintignore and the LEXICON) must resolve to the worktree,
+# not to the store
+wtbase="$tmpdir/wt-base"
+git init -q "$wtbase"
+(cd "$wtbase" && printf 'seed\n' > seed.txt && git add seed.txt \
+    && git -c user.name=t -c user.email=t@t commit -q -m "seed")
+git -C "$wtbase" worktree add -q "$tmpdir/wt-linked" >/dev/null 2>&1
+printf 'fixtures.md\n' > "$tmpdir/wt-linked/.host-lintignore"
+printf '## Phase 1: setup\n' > "$tmpdir/wt-linked/fixtures.md"
+wt_gitdir=$(git -C "$tmpdir/wt-linked" rev-parse --absolute-git-dir)
+(cd "$tmpdir/wt-linked" && GIT_DIR="$wt_gitdir" "$BINARY_ABS" --stdin-as fixtures.md < fixtures.md >/dev/null 2>&1) \
+    && ok "worktree GIT_DIR: ignored fixture stays clean" || bad "worktree GIT_DIR: ignore list must load from the worktree root (rc=$?)"
+# the same tell in a non-ignored file still flags under the worktree GIT_DIR
+printf '## Phase 1: setup\n' > "$tmpdir/wt-linked/plan.md"
+(cd "$tmpdir/wt-linked" && GIT_DIR="$wt_gitdir" "$BINARY_ABS" --stdin-as plan.md < plan.md >/dev/null 2>&1) && rc=0 || rc=$?
+[ "$rc" -eq 1 ] && ok "worktree GIT_DIR: a real tell still flags" || bad "worktree GIT_DIR: a real tell should flag (rc=$rc)"
+# the normal-repo hook environment keeps its existing resolution
+(cd "$wtbase" && printf 'seed.txt\n' > .host-lintignore && printf '## Phase 1: setup\n' > seed.txt \
+    && GIT_DIR="$wtbase/.git" "$BINARY_ABS" --stdin-as seed.txt < seed.txt >/dev/null 2>&1) \
+    && ok "plain GIT_DIR: ignore still honored" || bad "plain GIT_DIR: ignore should still be honored (rc=$?)"
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="
