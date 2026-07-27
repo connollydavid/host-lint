@@ -1355,17 +1355,17 @@ fn run_docs_masks_a_lexicon_declared_prose_tell() {
     git(&dir, &["add", "-A"]);
     git(&dir, &["commit", "-qm", "doc"]);
     // Undeclared: the prose tell fires.
-    let bare = host_lint::run_docs(&dir, &[], &[]).unwrap();
+    let bare = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
     assert!(
-        bare.iter().any(|m| m.severity == Severity::Warn),
+        bare.matches.iter().any(|m| m.severity == Severity::Warn),
         "undeclared, the ai-diction term warns in the --docs walk"
     );
     // Declared: the same phrases are masked before detection, so the warn clears —
     // the in-process embedder gets the identical verdict to standalone `host-lint --docs`.
     let allow = vec!["wdm-harness".to_string(), "the harness".to_string()];
-    let masked = host_lint::run_docs(&dir, &allow, &[]).unwrap();
+    let masked = host_lint::run_docs(&dir, &allow, &[], host_lint::Corpus::WorkingTree).unwrap();
     assert!(
-        !masked.iter().any(|m| m.severity == Severity::Warn),
+        !masked.matches.iter().any(|m| m.severity == Severity::Warn),
         "a LEXICON-declared phrase clears the prose tell in the shared --docs walk"
     );
     let _ = fs::remove_dir_all(&dir);
@@ -1394,8 +1394,8 @@ fn run_docs_scans_untracked_authored_but_not_gitignored() {
     // A brand-new authored doc, created but never staged.
     fs::write(dir.join("new.md"), trope).unwrap();
 
-    let m = host_lint::run_docs(&dir, &[], &[]).unwrap();
-    let flagged: std::collections::HashSet<&str> = m.iter().map(|x| x.file.as_str()).collect();
+    let m = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
+    let flagged: std::collections::HashSet<&str> = m.matches.iter().map(|x| x.file.as_str()).collect();
     assert!(flagged.contains("tracked.md"), "a tracked authored doc is scanned");
     assert!(
         flagged.contains("new.md"),
@@ -1405,5 +1405,71 @@ fn run_docs_scans_untracked_authored_but_not_gitignored() {
         !flagged.contains("gen/page.md"),
         "a gitignored generated doc stays excluded (--exclude-standard)"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// The gate judges the record; the hook scans the working tree (agentic-host call/0048).
+// The same tree yields a different corpus under each, so an uncommitted draft can never
+// redden a gate that a release depends on.
+#[test]
+fn the_record_corpus_leaves_the_uncommitted_draft_alone() {
+    let dir = std::env::temp_dir().join(format!("hl-docs-corpus-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q", "-b", "main"]);
+    git(&dir, &["config", "user.email", "t@t"]);
+    git(&dir, &["config", "user.name", "t"]);
+    let trope = "# T\n\nWe shipped it \u{2014} and it works.\n";
+    fs::write(dir.join("tracked.md"), trope).unwrap();
+    git(&dir, &["add", "tracked.md"]);
+    git(&dir, &["commit", "-qm", "init"]);
+    fs::write(dir.join("scratch.md"), trope).unwrap();
+
+    let hook = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
+    let hook_files: std::collections::HashSet<&str> =
+        hook.matches.iter().map(|x| x.file.as_str()).collect();
+    assert!(hook_files.contains("scratch.md"), "the hook still sees the uncommitted draft");
+
+    let gate = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::Record).unwrap();
+    let gate_files: std::collections::HashSet<&str> =
+        gate.matches.iter().map(|x| x.file.as_str()).collect();
+    assert!(gate_files.contains("tracked.md"), "the gate still judges the recorded document");
+    assert!(
+        !gate_files.contains("scratch.md"),
+        "a gate that reddens over an uncommitted note judges what no clone contains"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// A document the walk listed and could not read is reported, never dropped. Reporting the
+// rest as clean would be a verdict over a corpus with a hole in it, which is the class
+// agentic-host plan/0077 closed for its reference sweep and left open here.
+#[cfg(unix)]
+#[test]
+fn a_document_that_cannot_be_read_is_named_rather_than_skipped() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("hl-docs-unread-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "-q", "-b", "main"]);
+    git(&dir, &["config", "user.email", "t@t"]);
+    git(&dir, &["config", "user.name", "t"]);
+    fs::write(dir.join("clean.md"), "# T\n\nPlain prose.\n").unwrap();
+    fs::write(dir.join("locked.md"), "# T\n\nWe shipped it \u{2014} and it works.\n").unwrap();
+    git(&dir, &["add", "-A"]);
+    git(&dir, &["commit", "-qm", "init"]);
+    fs::set_permissions(dir.join("locked.md"), fs::Permissions::from_mode(0o000)).unwrap();
+
+    let scan = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::Record).unwrap();
+    assert!(
+        scan.unread.iter().any(|p| p == "locked.md"),
+        "the walk names the document it could not open, so a caller can refuse"
+    );
+    assert!(
+        !scan.matches.iter().any(|m| m.file == "locked.md"),
+        "nothing is claimed about a document that was never read"
+    );
+
+    let _ = fs::set_permissions(dir.join("locked.md"), fs::Permissions::from_mode(0o644));
     let _ = fs::remove_dir_all(&dir);
 }

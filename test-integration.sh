@@ -517,6 +517,29 @@ printf '## Phase 1: setup\n' > "$tmpdir/wt-linked/plan.md"
     && GIT_DIR="$wtbase/.git" "$BINARY_ABS" --stdin-as seed.txt < seed.txt >/dev/null 2>&1) \
     && ok "plain GIT_DIR: ignore still honored" || bad "plain GIT_DIR: ignore should still be honored (rc=$?)"
 
+# --- A directory argument names the tree to audit (agentic-host plan/0078) ---
+# `--all <dir>` and `--docs <dir>` used to push the directory onto the file list and
+# never read it, so the walk audited whichever tree the working directory resolved to
+# and returned a confident verdict about a tree it was not handed.
+echo ""
+echo "--- A directory argument is honoured or refused ---"
+argdir=$(mktemp -d)
+trap 'rm -rf "$argdir"' EXIT
+git -C "$argdir" init -q -b main
+git -C "$argdir" config user.email t@t
+git -C "$argdir" config user.name t
+printf '# T\n\nWe shipped it \xe2\x80\x94 and it works.\n' > "$argdir/doc.md"
+git -C "$argdir" add -A
+git -C "$argdir" -c user.email=t@t -c user.name=t commit -qm init
+# Run from a directory that is NOT the fixture, naming the fixture explicitly.
+(cd / && "$BINARY_ABS" --docs "$argdir" >/dev/null 2>&1) && rc=0 || rc=$?
+[ "$rc" -eq 3 ] && ok "--docs <dir> audits the named tree (rc=3)" \
+    || bad "--docs <dir> must audit the named tree, not the cwd's (want rc=3, got $rc)"
+# An argument that is not a single directory is refused rather than silently dropped.
+(cd "$argdir" && "$BINARY_ABS" --docs doc.md >/dev/null 2>&1) && rc=0 || rc=$?
+[ "$rc" -eq 2 ] && ok "--docs <file> is a usage error (rc=2)" \
+    || bad "--docs with a file argument must be a usage error (want rc=2, got $rc)"
+
 # --- Summary ---
 echo ""
 echo "=== Results ==="

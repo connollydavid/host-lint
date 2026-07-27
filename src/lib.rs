@@ -1285,29 +1285,59 @@ pub fn scan_prose_text(input: &str, source: &str, allow_lc: &[String], matches: 
 /// Scope determines type: naming tells hide in any file, but prose tropes are a
 /// property of authored narrative, so `--docs` walks `.md` only and never runs the
 /// prose engine over `.rs`/`.toml`/`.sh` (which would flag decoration in code
+/// Which documents an audit judges. **The hook scans the working tree; the gate judges
+/// the record** (agentic-host call/0048). A hook run wants the untracked draft, because
+/// catching a document before it is staged is its job (host-lint#17). A gate run must
+/// not: reddening over an uncommitted note asserts something about a record that does
+/// not contain the note, which nobody can re-derive from any clone, and it blocks a
+/// release over a file the release does not ship.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Corpus {
+    /// Tracked and staged, plus untracked-but-not-ignored. The hook and the CLI sweep.
+    WorkingTree,
+    /// Tracked and staged only. What a gate may judge.
+    Record,
+}
+
+/// What a documents audit found, and what it could not read.
+#[derive(Default)]
+pub struct DocScan {
+    pub matches: Vec<Match>,
+    /// Documents the walk listed and could not open. Never silently dropped: a caller
+    /// that gates must refuse rather than report clean over them.
+    pub unread: Vec<String>,
+}
+
 /// comments and string literals, with a meaningless clean-to-zero bar over source).
-/// It walks the **authored working tree**: `git ls-files` (tracked and staged) plus
-/// `git ls-files --others --exclude-standard` (untracked files git would offer to add),
-/// so a brand-new authored doc is audited before it is even staged, and a pre-commit
-/// run is never silently clean over a file it skipped (host-lint#17). `--exclude-standard`
-/// keeps gitignored output, vendored deps, untracked worktrees, and submodules out, just
-/// as the bare `git ls-files` walk did; `.host-lintignore` filters the rest (e.g. the
-/// append-only `MEMORY.md`). Prose tells are advisory (warn, exit 3), as elsewhere; the
-/// `verify` gate's recheck treats that non-zero as a regression. Returns the matches or an
-/// error string — the binary prints it and exits 2; an in-process embedder surfaces it as
-/// it chooses. The shared walk, so host-lint and host-lifecycle audit docs through one
-/// engine (host-lifecycle#2).
-pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<Match>, String> {
-    let mut matches = Vec::new();
+/// It walks the corpus the caller names, filtered by `.host-lintignore` (e.g. the
+/// append-only `MEMORY.md`); `--exclude-standard` keeps gitignored output, vendored
+/// deps, untracked worktrees, and submodules out of the working-tree corpus. Prose
+/// tells are advisory (warn, exit 3), as elsewhere; the `verify` gate's recheck treats
+/// that non-zero as a regression. Returns the matches and the unreadable paths, or an
+/// error string — the binary prints it and exits 2; an in-process embedder surfaces it
+/// as it chooses. The shared walk, so host-lint and host-lifecycle audit docs through
+/// one engine (host-lifecycle#2).
+pub fn run_docs(
+    root: &Path,
+    allow: &[String],
+    ignore: &[String],
+    corpus: Corpus,
+) -> Result<DocScan, String> {
+    let mut scan = DocScan::default();
     if root.as_os_str().is_empty() {
         // A clean return here would be a fail-open docs audit over nothing. Fail closed.
         return Err("--docs needs a repository root (none resolved)".to_string());
     }
     let root_str = root.to_string_lossy();
-    // The authored working tree: tracked and staged, then untracked-but-not-ignored. The
-    // two sets are disjoint (an entry is either in the index or not), so no dedup is needed.
     let tracked = git_paths(root_str.as_ref(), &["ls-files", "-z"])?;
-    let untracked = git_paths(root_str.as_ref(), &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    // The working-tree corpus adds untracked-but-not-ignored files. The two sets are
+    // disjoint (an entry is either in the index or not), so no dedup is needed.
+    let untracked = match corpus {
+        Corpus::WorkingTree => {
+            git_paths(root_str.as_ref(), &["ls-files", "--others", "--exclude-standard", "-z"])?
+        }
+        Corpus::Record => Vec::new(),
+    };
     for rel in tracked.iter().chain(untracked.iter()) {
         if !rel.to_ascii_lowercase().ends_with(".md") {
             continue;
@@ -1322,11 +1352,16 @@ pub fn run_docs(root: &Path, allow: &[String], ignore: &[String]) -> Result<Vec<
         if !path.is_file() {
             continue;
         }
-        if let Ok(content) = fs::read_to_string(&path) {
-            scan_prose_text(&content, rel, allow, &mut matches);
+        // A document the walk listed and could not read is recorded, never dropped: a
+        // verdict over a corpus with a hole in it is a claim the run cannot make
+        // (agentic-host call/0048). The caller decides what to do about it; every
+        // caller that gates must refuse.
+        match fs::read_to_string(&path) {
+            Ok(content) => scan_prose_text(&content, rel, allow, &mut scan.matches),
+            Err(_) => scan.unread.push(rel.clone()),
         }
     }
-    Ok(matches)
+    Ok(scan)
 }
 
 /// Run a `git ls-files`-family command under `-C <root>` and split its NUL-delimited

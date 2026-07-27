@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 
-use host_lint::{Match, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
+use host_lint::{Corpus, Match, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -339,9 +339,19 @@ fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matc
 /// `matches`. An I/O error walking the tree exits 2 rather than passing it silently.
 /// Shared by `--all`, `--docs`, and no-file `--prose` so one repo-wide prose audit
 /// backs all three and matches the host-lifecycle prose gate (host-lint#20).
-fn audit_tracked_docs(root: &str, allow: &[String], matches: &mut Vec<Match>) {
-    match run_docs(Path::new(root), allow, &load_ignore(root)) {
-        Ok(m) => matches.extend(m),
+fn audit_tracked_docs(root: &str, allow: &[String], corpus: Corpus, matches: &mut Vec<Match>) {
+    match run_docs(Path::new(root), allow, &load_ignore(root), corpus) {
+        Ok(scan) => {
+            // A document listed and not read is not a skip. Reporting the rest as clean
+            // would be a verdict over a corpus with a hole in it (agentic-host call/0048).
+            if !scan.unread.is_empty() {
+                for rel in &scan.unread {
+                    eprintln!("host-lint: cannot read {rel}: listed by the walk and not audited");
+                }
+                process::exit(2);
+            }
+            matches.extend(scan.matches);
+        }
         Err(e) => {
             eprintln!("host-lint: {e}");
             process::exit(2);
@@ -561,7 +571,24 @@ fn main() {
         i += 1;
     }
 
-    let root = repo_root();
+    // `--all` and `--docs` audit a whole repository, so a bare argument names the tree to
+    // audit rather than a file to scan. It used to be pushed onto `files` and then never
+    // read, so `host-lint --docs <dir>` returned a confident verdict about whichever tree
+    // the working directory resolved to — a check answering about something it was not
+    // handed. Honour one directory; refuse anything else rather than guess.
+    let root = if all_flag || docs_flag {
+        match files.len() {
+            0 => repo_root(),
+            1 if Path::new(&files[0]).is_dir() => files.remove(0),
+            _ => {
+                let flag = if all_flag { "--all" } else { "--docs" };
+                eprintln!("host-lint: {flag} audits one repository; give it a single directory or none, not a file list");
+                process::exit(2);
+            }
+        }
+    } else {
+        repo_root()
+    };
     let lex = load_lexicon(Path::new(&root));
     let allow = lex.phrases_lc.as_slice();
     let units = lex.units.as_slice();
@@ -608,13 +635,13 @@ fn main() {
         // matches the host-lifecycle naming + prose gate (host-lint#20). A `--prose`
         // passed alongside `--all` is redundant and folded in here.
         run_all_files(&root, allow, units, strict, &load_ignore(&root), &mut matches);
-        audit_tracked_docs(&root, allow, &mut matches);
+        audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
     } else if prose_flag {
         if files.is_empty() {
             // `--prose` with no files audits the tracked authored docs (the repo-wide
             // prose audit that matches the host-lifecycle prose gate, host-lint#20),
             // rather than scanning nothing and exiting clean (a fail-open) or erroring.
-            audit_tracked_docs(&root, allow, &mut matches);
+            audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
         } else {
             // `--prose <files>` scans exactly those files; an unreadable one is an
             // error, not a silent skip.
@@ -629,7 +656,7 @@ fn main() {
             }
         }
     } else if docs_flag {
-        audit_tracked_docs(&root, allow, &mut matches);
+        audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
     } else if log_flag {
         run_log(allow, units, strict, &mut matches);
     } else if files.is_empty() {
