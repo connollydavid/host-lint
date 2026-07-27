@@ -645,6 +645,48 @@ pub fn check_bare_numeral_header(line: &str) -> Option<String> {
     None
 }
 
+/// A heading that is nothing but a noun and a cardinal: `## Check 1`, `## Part 2`.
+///
+/// `FLAG_TERMS` is a vocabulary, and a vocabulary is a proxy for the tell rather than
+/// the tell itself. Renaming a heading from a listed noun to an unlisted one (`## Check 1`)
+/// passed the linter and kept the tell entirely — still a heading naming a *position*
+/// instead of content (host-lint#24). This catches the shape, so a noun-swap cannot
+/// evade it. The example is given unlisted-side only, because writing the listed spelling
+/// here would flag this very comment.
+///
+/// Deliberately narrow, because a generic rule earns its false positives: the WHOLE
+/// heading must be one word and one integer. `## MCP tool surface passes` is untouched,
+/// and so is anything carrying more words. A dotted number is a version, and a long
+/// integer is a year or a status code, both already judged by the bare-numeral rule
+/// beside this one; a genuine `Windows 11` heading is what the `LEXICON` is for.
+pub fn check_ordinal_scaffold_header(line: &str) -> Option<String> {
+    let t = line.trim();
+    let hashes = t.chars().take_while(|&c| c == '#').count();
+    if hashes == 0 || hashes > 6 {
+        return None;
+    }
+    let rest = t[hashes..].trim().trim_end_matches([':', '.', '—', '-']).trim();
+    let mut words = rest.split_whitespace();
+    let (Some(noun), Some(number), None) = (words.next(), words.next(), words.next()) else {
+        return None;
+    };
+    // The noun must be a word, not a code or a numeral: `## v2 3` is not this shape.
+    if !noun.chars().all(|c| c.is_alphabetic()) || noun.len() < 2 {
+        return None;
+    }
+    // A plain integer only. A dotted or long number is a version, a year, or a status
+    // code, and those are the bare-numeral rule's business rather than this one's.
+    if number.is_empty() || !number.chars().all(|c| c.is_ascii_digit()) || number.len() >= 3 {
+        return None;
+    }
+    // The vocabulary already flags its own nouns; this rule exists for the ones it misses,
+    // so it does not double-report.
+    if FLAG_TERMS.contains(&noun.to_ascii_lowercase().as_str()) {
+        return None;
+    }
+    Some(rest.to_string())
+}
+
 // Classify a single line, preferring the most severe outcome: a confirmed tell
 // (flag) wins over the bare-numeral degenerate form (warn).
 /// Co-Authored-By is a discretionary attribution trailer: a co-author's name
@@ -673,6 +715,12 @@ pub fn classify_line_with_units(line: &str, markdown: bool, units: &[String]) ->
     }
     if markdown {
         if let Some(t) = check_bare_numeral_header(line) {
+            return Some((Severity::Flag, t));
+        }
+        // The shape rather than the vocabulary, so a noun-swap cannot evade the
+        // lexical set (host-lint#24). Heading context only, where a bare
+        // `<noun> <cardinal>` is a position label rather than ordinary prose.
+        if let Some(t) = check_ordinal_scaffold_header(line) {
             return Some((Severity::Flag, t));
         }
     }

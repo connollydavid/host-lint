@@ -1472,3 +1472,34 @@ fn a_document_that_cannot_be_read_is_named_rather_than_skipped() {
     let _ = fs::set_permissions(dir.join("locked.md"), fs::Permissions::from_mode(0o644));
     let _ = fs::remove_dir_all(&dir);
 }
+
+// The vocabulary is a proxy for the tell, not the tell. Renaming `## Leg 1` to
+// `## Check 1` passed the linter while keeping the tell entirely: a heading naming a
+// position rather than content (host-lint#24). This catches the shape.
+#[test]
+fn a_noun_swap_does_not_evade_the_ordinal_heading_rule() {
+    use host_lint::check_ordinal_scaffold_header as f;
+    // The evasion from the issue, and its siblings.
+    assert!(f("## Check 1").is_some(), "the exact evasion reported");
+    assert!(f("## Part 2").is_some());
+    assert!(f("### Item 3").is_some());
+    assert!(f("## Check 1:").is_some(), "trailing punctuation does not save it");
+
+    // The genuine fix in that issue: named by content, so it must stay clean.
+    assert!(f("## MCP tool surface passes").is_none());
+    assert!(f("## Step 3 of the plan").is_none(), "more than the bare shape is prose");
+
+    // Not this rule's business: a version, a year, a status code. The bare-numeral
+    // rule beside it already judges those, and double-reporting would be noise.
+    assert!(f("## Rust 1.95").is_none());
+    assert!(f("## 2024").is_none());
+    assert!(f("## Release 404").is_none(), "three digits reads as a code");
+
+    // The vocabulary still owns its own nouns, so this never double-reports.
+    assert!(f("## Phase 1").is_none(), "FLAG_TERMS handles it; this rule stands aside");
+    assert!(f("## Stage 2").is_none());
+
+    // Not a heading at all.
+    assert!(f("Check 1 of the sequence").is_none());
+    assert!(f("####### Check 1").is_none(), "seven hashes is not a heading");
+}

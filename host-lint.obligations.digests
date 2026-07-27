@@ -1,4 +1,4 @@
 # host-lifecycle obligations digest ledger (--record-digests).
 # <obligation-id>\t<git hash-object of declared inputs at re-derivation>
-rule-success.DetectReviewCodeAsName	1b39ca8909ff238769785004ccf9478ce0b3e951
-rule-failure.DetectReviewCodeAsName.1	1b39ca8909ff238769785004ccf9478ce0b3e951
+rule-success.DetectReviewCodeAsName	742634ccaebf776b69fc5135a728fcb2a0ab242d
+rule-failure.DetectReviewCodeAsName.1	742634ccaebf776b69fc5135a728fcb2a0ab242d
