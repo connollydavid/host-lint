@@ -807,9 +807,8 @@ fn compound_units() {
     ] {
         assert!(check_warn(line).is_none(), "slashed-unit quantity should not warn: {line}");
     }
-    for line in ["as decided in 2.1"] {
-        assert!(check_warn(line).is_some(), "plain dotted code should still warn: {line}");
-    }
+    let line = "as decided in 2.1";
+    assert!(check_warn(line).is_some(), "plain dotted code should still warn: {line}");
 }
 
 #[test]
@@ -818,7 +817,7 @@ fn declared_units() {
     // numeral as a quantity, not a name.
     let gflops = "gflops".to_string();
     assert!(
-        check_warn_with_units("312.4 GFLOPS sustained", &[gflops.clone()]).is_none(),
+        check_warn_with_units("312.4 GFLOPS sustained", std::slice::from_ref(&gflops)).is_none(),
         "a numeral before a declared unit should not warn"
     );
     // With no units declared, the same line warns: GFLOPS is not a built-in unit.
