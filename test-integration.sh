@@ -492,7 +492,7 @@ if [ -n "$PACK_SRC" ]; then
     # Dispatched through the core the versions match, so the skeleton reaches
     # its usage error (exit 2, no lanes yet), never a hollow clean exit.
     out=$("$pdir/host-lint" pack ffmpeg 2>&1) && rc=0 || rc=$?
-    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'no lanes are implemented'; } && ok "pack ffmpeg: dispatch reaches the skeleton" || bad "pack ffmpeg: dispatch (rc=$rc: $out)"
+    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'only `rules` is implemented'; } && ok "pack ffmpeg: an unimplemented lane is a usage error, never a clean verdict" || bad "pack ffmpeg: dispatch (rc=$rc: $out)"
     # A skewed core version refuses to run (host-lint#23, strict handshake).
     out=$(HOST_LINT_VERSION=999.0.0 "$pdir/host-lint-ffmpeg" 2>&1) && rc=0 || rc=$?
     { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'skew'; } && ok "pack ffmpeg: version skew refuses" || bad "pack ffmpeg: skew (rc=$rc: $out)"
@@ -584,6 +584,33 @@ mkdir -p "$ALLDIR"
 ( cd "$ALLDIR" && "$OLDPWD/$BINARY" --all >/dev/null 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "--all skips a tracked-but-deleted file by verdict, not by error" \
                 || bad "--all fail-closed leak (want rc=0, got $rc)"
+
+# --- the ffmpeg pack's rule registry (host-lint#22, rule-registry) ---
+echo ""
+echo "--- ffmpeg rules registry ---"
+
+FFPACK=$(dirname "$BINARY_ABS")/host-lint-ffmpeg
+if [ -x "$FFPACK" ]; then
+    out=$("$FFPACK" rules 2>&1); rc=$?
+    [ "$rc" -eq 0 ] && ok "rules: listing exits 0" || bad "rules: listing exit (rc=$rc)"
+    echo "$out" | grep -q 'commit-msg-format' && ok "rules: the commit-message rule is listed" || bad "rules: listing content"
+    echo "$out" | grep -q 'unmeasured' && ok "rules: tiers report as unmeasured before calibration" || bad "rules: unmeasured marker"
+
+    "$FFPACK" rules --json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d["rules"] and d["upstream_commit"] else 1)' \
+        && ok "rules --json: parses and carries the upstream pin" || bad "rules --json"
+
+    # A tree the registry cannot read is an error, never an empty clean report.
+    "$FFPACK" rules --verify-source "$(mktemp -d)" >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "rules --verify-source: an unreadable tree exits 2" || bad "rules --verify-source unreadable (rc=$rc)"
+
+    "$FFPACK" rules --verify-source >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "rules --verify-source: a missing argument is a usage error" || bad "rules --verify-source usage (rc=$rc)"
+
+    "$FFPACK" rules --check-freshness "$(mktemp -d)" >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "rules --check-freshness: a non-git tree exits 2" || bad "rules --check-freshness (rc=$rc)"
+else
+    echo "  (pack binary absent; skipped)"
+fi
 
 echo "=== Results ==="
 echo "Passed: $PASS / $TOTAL"
