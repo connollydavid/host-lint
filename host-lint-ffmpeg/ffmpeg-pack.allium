@@ -1,0 +1,375 @@
+-- allium: 3
+-- host-lint-ffmpeg: the FFmpeg commit-rule pack (host-lint#22, plan/0072).
+--
+-- The pack encodes upstream's commit and patch rules as a checkable corpus and runs
+-- them over an artefact. What this specification is FOR is the part that is easy to
+-- get wrong and impossible to see afterwards: which rules may block, which knowledge
+-- is whose, and what a verdict is allowed to claim.
+--
+-- Three separations carry the whole design.
+--
+--   1. A rule is upstream's or the project's. Upstream's rules trace to a pinned
+--      section of a pinned source. A project convention is declared apart, because
+--      mixing one into the corpus puts this pack's opinion behind FFmpeg's authority.
+--   2. A tier is a claim about detectability, and a MEASURED claim. A rule that
+--      flagged accepted upstream history cannot block, whatever its author intended.
+--   3. Knowledge is checked, receipted, or attested, and the three never merge. An
+--      unrun leg is not a pass and an attested item is not a check.
+--
+-- Scope: the rule model, the tier and lane invariants, the corpus drift verdict, the
+-- project mode, and what a report may render. Excludes (implementation): the texinfo
+-- splitter, the diff parser, the MAINTAINERS syntax, the hook scripts, and every
+-- output string.
+
+-- How reliably a rule can be judged from the artefact alone.
+enum Tier {
+    -- Decidable with no judgement: a shape, a count, a presence.
+    mechanical
+    -- Decidable with a false-positive rate that must be measured before it is
+    -- trusted. Reports; never blocks.
+    heuristic
+    -- Not decidable from any artefact. A human answers.
+    attested
+}
+
+-- Which lane reads a rule. A rule whose lane does not exist cannot have been
+-- measured, which is what stops an unmeasured rate appearing.
+enum Lane {
+    msg
+    diff
+    series
+    mail
+    build
+}
+
+-- What a project asks of the pack. Not upstream's doctrine: a project's own posture.
+enum Mode {
+    -- Everything reports. The mode a project adopts on day one.
+    advise
+    -- Mechanical rules block; heuristics advise.
+    enforce
+    -- A fixed reference series. Findings report and never block, because a gate
+    -- demanding the history be rewritten asks for the one thing the mode forbids.
+    frozen
+}
+
+-- What one expensive leg established.
+enum LegResult {
+    passed
+    failed
+    -- Never run. Distinct from failed on purpose: "we did not check" and "we checked
+    -- and it broke" are different facts, and collapsing them turns silence into a
+    -- green tick.
+    unrun
+}
+
+-- How an item renders in a report.
+enum Mark {
+    checked
+    reported
+    receipted
+    receipt_failed
+    unrun
+    awaiting_human
+}
+
+entity Project {
+    name: String
+}
+
+-- One heading in a pinned upstream source.
+entity Section {
+    -- States rules. Discovered rather than declared, and the discovery was wrong
+    -- three times: a heuristic narrower than the thing it discovers reports
+    -- completeness over whatever it happened to see.
+    rule_bearing: Boolean
+    -- Its bytes still match the pinned digest.
+    matches_pin: Boolean
+}
+
+-- One encoded rule.
+entity Rule {
+    tier: Tier
+    lane: Lane
+    -- Traces to a rule-bearing section of a pinned source. False means it is a
+    -- project convention, which must be declared as one.
+    from_upstream: Boolean
+    -- Declared as a project convention, with a stated reason.
+    declared_project: Boolean
+    -- Measured against accepted upstream history.
+    measured: Boolean
+    -- The measurement found it flagging accepted work.
+    flagged_accepted_history: Boolean
+}
+
+-- The project's config, resolved worktree first so one clone can hold a frozen series
+-- in one worktree and live work in another. Modelled because the mode has to come from
+-- somewhere: without a producer, the blocking transition is unreachable and the run can
+-- never enter enforce at all.
+entity ProjectConfig {
+    mode: Mode
+}
+
+-- Worktree precedence is deliberately NOT modelled here. Which file the mode came
+-- from is implementation, which this specification's scope excludes, and the only
+-- invariant available over one config per run would have been a tautology. It is
+-- tested where it can be tested, over two real worktrees holding different modes.
+
+-- One expensive leg, and what running it established.
+entity Leg {
+    result: LegResult
+}
+
+-- The recorded evidence for a set of legs over one head.
+entity Receipt {
+    -- Still describes the current head. A rewritten head makes it stale, and stale
+    -- evidence is not evidence.
+    current: Boolean
+}
+
+-- One rendered checklist item. It carries the leg that backs it where one does, so
+-- the rendering invariant can bite: without the link, "an unrun leg is never passed"
+-- can only be stated about the leg itself, where it is a tautology about an enum.
+entity Item {
+    rule: Rule
+    mark: Mark
+    backed_by: Leg
+}
+
+-- One run of one lane over one artefact.
+entity Run {
+    status: running | clean | reported | blocked | error
+    mode: Mode
+    -- A mechanical rule fired.
+    saw_mechanical: Boolean
+    -- A heuristic rule fired.
+    saw_heuristic: Boolean
+    -- Something the run was asked to read could not be read. A verdict over a corpus
+    -- with a hole in it is a claim the run cannot make.
+    unreadable_input: Boolean
+    transitions status {
+        running -> clean
+        running -> reported
+        running -> blocked
+        running -> error
+        terminal: clean, reported, blocked, error
+    }
+}
+
+given {
+    receipt: Receipt
+    run: Run
+}
+
+surface PackCli {
+    facing project: Project
+    provides:
+        RunStarts(project)
+        RunCompletes(project)
+        RunFails(project)
+    @guarantee AcceptedHistoryNeverBlocks
+        -- No rule that flagged accepted upstream history can block a run.
+    @guarantee UnrunIsNeverPassed
+        -- A leg nobody ran never renders as though it passed.
+}
+
+-- === The project's posture ===
+
+-- The run adopts the mode the config resolved to. Three rules rather than one
+-- assignment, so each mode is a producer the transition graph can see.
+rule AdoptEnforce {
+    when: settings: ProjectConfig.created
+    requires: run.status = running and settings.mode = enforce
+    ensures: run.mode = enforce
+}
+
+rule AdoptAdvise {
+    when: settings: ProjectConfig.created
+    requires: run.status = running and settings.mode = advise
+    ensures: run.mode = advise
+}
+
+rule AdoptFrozen {
+    when: settings: ProjectConfig.created
+    requires: run.status = running and settings.mode = frozen
+    ensures: run.mode = frozen
+}
+
+-- === The corpus ===
+
+-- A rule-bearing section whose bytes moved is drift the operator has to acknowledge.
+-- A section that states no rules is reported and does not gate: upstream re-indenting
+-- its editor recipe is not rule drift, and a check crying wolf on every unrelated
+-- commit stops being read.
+rule ReportRuleDrift {
+    when: section: Section.created
+    requires: section.rule_bearing and not section.matches_pin
+    ensures: run.saw_mechanical = true
+}
+
+-- === Verdict lifecycle ===
+
+rule StartRun {
+    when: RunStarts(project)
+    ensures: run.status = running
+    ensures: run.saw_mechanical = false
+    ensures: run.saw_heuristic = false
+    ensures: run.unreadable_input = false
+}
+
+-- An input the run could not read ends it in error, never in a verdict. This is the
+-- defect the wider project has closed twice: a clean result over something nobody
+-- opened.
+rule FailOnUnreadableInput {
+    when: RunCompletes(project)
+    requires: run.status = running and run.unreadable_input
+    ensures: run.status = error
+}
+
+-- A mechanical finding blocks only where the project asked for it. The finding is
+-- unchanged either way: the mode governs consequences, not truth.
+rule BlockOnMechanical {
+    when: RunCompletes(project)
+    requires: run.status = running and not run.unreadable_input
+              and run.saw_mechanical and run.mode = enforce
+    ensures: run.status = blocked
+}
+
+rule ReportUnderAdvisoryMode {
+    when: RunCompletes(project)
+    requires: run.status = running and not run.unreadable_input
+              and run.saw_mechanical and not (run.mode = enforce)
+    ensures: run.status = reported
+}
+
+rule ReportHeuristicOnly {
+    when: RunCompletes(project)
+    requires: run.status = running and not run.unreadable_input
+              and not run.saw_mechanical and run.saw_heuristic
+    ensures: run.status = reported
+}
+
+rule VerdictClean {
+    when: RunCompletes(project)
+    requires: run.status = running and not run.unreadable_input
+              and not run.saw_mechanical and not run.saw_heuristic
+    ensures: run.status = clean
+}
+
+rule VerdictError {
+    when: RunFails(project)
+    requires: run.status = running
+    ensures: run.status = error
+}
+
+-- === Rendering ===
+
+-- An attested rule renders as awaiting a human unless a leg carried it.
+rule RenderAttested {
+    when: item: Item.created
+    requires: item.rule.tier = attested
+    ensures: item.mark = awaiting_human
+}
+
+-- === Invariants ===
+
+-- The measured claim. A rule that flagged accepted upstream history is wrong about
+-- upstream, so it cannot be a blocking tier whatever its author intended.
+invariant AcceptedHistoryNeverBlocks {
+    for r in Rules where r.flagged_accepted_history:
+        not (r.tier = mechanical)
+}
+
+-- A tier is only a claim once something measured it. An unmeasured mechanical rule is
+-- an assertion with a gate attached.
+invariant MechanicalIsMeasured {
+    for r in Rules where r.tier = mechanical:
+        r.measured
+}
+
+-- Every rule is upstream's or the project's, and exactly one. A rule that is neither
+-- has no source; a rule that is both puts this pack's opinion behind FFmpeg's name.
+invariant EveryRuleHasExactlyOneOrigin {
+    for r in Rules:
+        r.from_upstream implies not r.declared_project
+}
+
+invariant AProjectRuleIsNotUpstreams {
+    for r in Rules where r.declared_project:
+        not r.from_upstream
+}
+
+-- A rate cannot exist for a lane that does not run.
+invariant OnlyABuiltLaneIsMeasured {
+    for r in Rules where r.measured:
+        r.lane in {msg, diff}
+}
+
+-- Attested rules are never measured, because there is nothing to measure.
+invariant AttestedIsNeverMeasured {
+    for r in Rules where r.tier = attested:
+        not r.measured
+}
+
+-- An attested item never renders as checked. One is the entire failure: the reader's
+-- eye takes a tick as settled.
+invariant AttestedNeverRendersChecked {
+    for i in Items where i.rule.tier = attested:
+        not (i.mark = checked)
+}
+
+-- A leg nobody ran never renders as evidence. The same failure as the attested one
+-- from the other side, and the reason Item carries its leg: stated about the leg
+-- alone this would be a tautology about an enum and would assert nothing.
+invariant UnrunIsNeverPassed {
+    for i in Items where i.backed_by.result = unrun:
+        not (i.mark = receipted) and not (i.mark = checked)
+}
+
+-- And a failed leg renders as failed rather than as merely unrun, because "we checked
+-- and it broke" is the more urgent of the two facts.
+invariant FailedLegRendersFailed {
+    for i in Items where i.backed_by.result = failed:
+        i.mark in {receipt_failed, reported}
+}
+
+-- Frozen never blocks, whatever was found. The mode exists to protect a fixed
+-- history, and a gate demanding it be rewritten asks for what the mode forbids.
+invariant FrozenNeverBlocks {
+    for r in Runs where r.mode = frozen:
+        not (r.status = blocked)
+}
+
+-- Advise never blocks either. A project adopting the pack cannot have its build
+-- broken on day one by rules it has not read yet.
+invariant AdviseNeverBlocks {
+    for r in Runs where r.mode = advise:
+        not (r.status = blocked)
+}
+
+-- A blocked run saw something mechanical. Blocking on a heuristic would make the
+-- measured tier meaningless.
+invariant BlockedSawMechanical {
+    for r in Runs where r.status = blocked:
+        r.saw_mechanical
+}
+
+-- A clean verdict saw nothing at all, and read everything it was given. Both halves
+-- matter: the second is what stops a hole in the input reading as a clean result.
+invariant CleanSawNothingAndReadEverything {
+    for r in Runs where r.status = clean:
+        not r.saw_mechanical and not r.saw_heuristic and not r.unreadable_input
+}
+
+-- An unreadable input reaches the error verdict and nowhere else.
+invariant UnreadableInputOnlyErrors {
+    for r in Runs where r.unreadable_input:
+        r.status in {running, error}
+}
+
+-- A stale receipt is not evidence. Reading one as current would let a rewritten head
+-- inherit the previous head's passes.
+invariant StaleReceiptCarriesNothing {
+    for i in Items where i.mark = receipted:
+        receipt.current
+}

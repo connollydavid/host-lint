@@ -7,3 +7,6 @@ license = "Unlicense"
 
 [dependencies]
 host-lint = { path = ".." }
+
+[dev-dependencies]
+proptest = "1.5"

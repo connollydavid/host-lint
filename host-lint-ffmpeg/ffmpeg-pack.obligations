@@ -1,0 +1,85 @@
+# ffmpeg-pack.obligations — a disposition for every `allium plan` obligation.
+# `host-lifecycle obligations ffmpeg-pack.allium --tests src --strict-discharge`
+# checks this is complete: nothing undispositioned, no stale entry, every `test:`
+# naming a real definition, every `exercises=` token present in that test's body.
+#
+#   <id> => test:<name> [exercises=<token>] | structural | waived: <reason>
+#
+# structural = the spec's own check/analyse lane discharges it.
+#
+# The tests are Rust in src/*.rs. Every name below was verified to exist as a real
+# definition before this file was written, rather than typed and hoped for.
+#
+# The rule of thumb is the refs manifest's: if breaking the rule would not fail the
+# named test, the disposition is wrong. The four invariants that carry the design are
+# AcceptedHistoryNeverBlocks, AttestedNeverRendersChecked, UnrunIsNeverPassed and
+# FrozenNeverBlocks, and each is discharged by a test that asserts over the WHOLE
+# registry or every mode rather than a sample, because one counter-example is the
+# entire failure.
+
+# --- Spec-integrity (the check/analyse lane discharges these) ---
+enum-comparable.Tier                                     => structural
+enum-comparable.Lane                                     => structural
+enum-comparable.Mode                                     => structural
+enum-comparable.LegResult                                => structural
+enum-comparable.Mark                                     => structural
+entity-fields.Project                                    => structural
+entity-fields.Section                                    => structural
+entity-fields.Rule                                       => structural
+entity-fields.ProjectConfig                              => structural
+entity-fields.Leg                                        => structural
+entity-fields.Receipt                                    => structural
+entity-fields.Item                                       => structural
+transition-rejected.Run.status                           => structural
+transition-terminal.Run.status                           => structural
+entity-fields.Run                                        => structural
+surface-actor.PackCli                                    => structural
+surface-provides.PackCli                                 => structural
+
+# --- Declared transitions ---
+transition-edge.Run.running.clean                        => test:pure_functional_is_functional exercises=classify
+transition-edge.Run.running.reported                     => test:a_self_describing_avoption_advises exercises=check_diff
+transition-edge.Run.running.blocked                      => test:frozen_never_blocks_however_severe exercises=blocks
+transition-edge.Run.running.error                        => test:something_that_is_not_a_patch_is_a_parse_error exercises=parse_message
+
+# --- Rules ---
+rule-success.AdoptEnforce                                => test:frozen_never_blocks_however_severe exercises=blocks
+rule-failure.AdoptEnforce.1                              => test:frozen_never_blocks_however_severe exercises=blocks
+rule-success.AdoptAdvise                                 => test:the_defaults_are_the_cautious_ones exercises=Mode::Advise
+rule-failure.AdoptAdvise.1                               => test:the_defaults_are_the_cautious_ones exercises=Mode::Advise
+rule-success.AdoptFrozen                                 => test:frozen_never_blocks_however_severe exercises=blocks
+rule-failure.AdoptFrozen.1                               => test:frozen_never_blocks_however_severe exercises=blocks
+rule-success.ReportRuleDrift                             => test:drift_is_reported_per_section_not_per_file exercises=drifted_sections
+rule-failure.ReportRuleDrift.1                           => test:drift_is_reported_per_section_not_per_file exercises=drifted_sections
+rule-success.StartRun                                    => test:the_defaults_are_the_cautious_ones exercises=Mode::Advise
+rule-success.FailOnUnreadableInput                       => test:a_missing_source_is_an_error_not_an_empty_report exercises=drifted_sections
+rule-failure.FailOnUnreadableInput.1                     => test:a_missing_source_is_an_error_not_an_empty_report exercises=drifted_sections
+rule-success.BlockOnMechanical                           => test:frozen_never_blocks_however_severe exercises=blocks
+rule-failure.BlockOnMechanical.1                         => test:frozen_never_blocks_however_severe exercises=blocks
+rule-success.ReportUnderAdvisoryMode                     => test:frozen_never_blocks_however_severe exercises=blocks
+rule-failure.ReportUnderAdvisoryMode.1                   => test:frozen_never_blocks_however_severe exercises=blocks
+rule-success.ReportHeuristicOnly                         => test:a_self_describing_avoption_advises exercises=check_diff
+rule-failure.ReportHeuristicOnly.1                       => test:a_self_describing_avoption_advises exercises=check_diff
+rule-success.VerdictClean                                => test:pure_functional_is_functional exercises=classify
+rule-failure.VerdictClean.1                              => test:pure_functional_is_functional exercises=classify
+rule-success.VerdictError                                => test:something_that_is_not_a_patch_is_a_parse_error exercises=parse_message
+rule-failure.VerdictError.1                              => test:something_that_is_not_a_patch_is_a_parse_error exercises=parse_message
+rule-success.RenderAttested                              => test:no_attested_item_ever_renders_as_checked exercises=render
+rule-failure.RenderAttested.1                            => test:no_attested_item_ever_renders_as_checked exercises=render
+
+# --- Invariants ---
+invariant.AcceptedHistoryNeverBlocks                     => test:the_measured_message_rules_are_not_blocking exercises=RULES
+invariant.MechanicalIsMeasured                           => test:only_measured_lanes_carry_a_rate exercises=measured_rate
+invariant.EveryRuleHasExactlyOneOrigin                   => test:every_emitted_id_is_upstream_or_declared_project exercises=PROJECT_RULES
+invariant.AProjectRuleIsNotUpstreams                     => test:every_emitted_id_is_upstream_or_declared_project exercises=PROJECT_RULES
+invariant.OnlyABuiltLaneIsMeasured                       => test:only_measured_lanes_carry_a_rate exercises=measured_rate
+invariant.AttestedIsNeverMeasured                        => test:attested_rules_never_carry_a_rate exercises=measured_rate
+invariant.AttestedNeverRendersChecked                    => test:no_attested_item_ever_renders_as_checked exercises=render
+invariant.UnrunIsNeverPassed                             => test:an_unrun_leg_never_renders_as_passed exercises=render
+invariant.FailedLegRendersFailed                         => test:a_receipted_leg_renders_receipted_and_a_failed_one_renders_failed exercises=render
+invariant.FrozenNeverBlocks                              => test:frozen_never_blocks_however_severe exercises=blocks
+invariant.AdviseNeverBlocks                              => test:the_defaults_are_the_cautious_ones exercises=Mode::Advise
+invariant.BlockedSawMechanical                           => test:frozen_never_blocks_however_severe exercises=blocks
+invariant.CleanSawNothingAndReadEverything               => test:a_missing_source_is_an_error_not_an_empty_report exercises=drifted_sections
+invariant.UnreadableInputOnlyErrors                      => test:something_that_is_not_a_patch_is_a_parse_error exercises=parse_message
+invariant.StaleReceiptCarriesNothing                     => test:a_rewritten_head_makes_the_receipt_stale exercises=is_stale

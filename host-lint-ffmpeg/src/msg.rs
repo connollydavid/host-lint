@@ -302,3 +302,71 @@ mod tests {
         assert!(f[0].detail.contains("no subject"));
     }
 }
+
+/// Property tests over the subject grammar.
+///
+/// The grammar is the one rule whose input space is unbounded, and the measured
+/// corpus only covers 500 real subjects. These assert the properties that must hold
+/// for every string, including the ones nobody would think to write down.
+#[cfg(test)]
+mod properties {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The checker must never panic. It runs in a commit hook, where a panic is
+        /// an unexplained failure the author cannot act on.
+        #[test]
+        fn never_panics_on_any_input(s in ".{0,400}") {
+            let _ = check_with(&s, false, false);
+            let _ = has_area_prefix(&s);
+            let _ = cites_tracker(&s);
+        }
+
+        /// An area prefix is preserved under appending to the description: whatever
+        /// follows `area: ` cannot take the prefix away.
+        #[test]
+        fn appending_to_a_description_keeps_the_prefix(
+            area in "[a-z][a-z0-9_/]{0,20}",
+            desc in "[a-zA-Z][a-zA-Z ]{0,40}",
+            more in "[a-zA-Z ]{0,40}",
+        ) {
+            let base = format!("{}: {}", area, desc);
+            prop_assume!(has_area_prefix(&base));
+            let extended = format!("{}{}", base, more);
+            prop_assert!(has_area_prefix(&extended));
+        }
+
+        /// Every exemption survives an arbitrary tail, because the exemption is about
+        /// how the subject STARTS.
+        #[test]
+        fn an_exempt_prefix_is_exempt_whatever_follows(tail in ".{0,120}") {
+            for p in AREA_EXEMPT_PREFIXES {
+                let s = format!("{}{}", p, tail);
+                prop_assert!(has_area_prefix(&s));
+            }
+        }
+
+        /// A subject with no colon can never carry an area prefix, unless it is one of
+        /// the exempt shapes. This is the property the 5-of-500 measurement rests on.
+        #[test]
+        fn no_colon_means_no_prefix(s in "[^:\n]{1,80}") {
+            prop_assume!(!AREA_EXEMPT_PREFIXES.iter().any(|p| s.starts_with(p)));
+            prop_assert!(!has_area_prefix(&s));
+        }
+
+        /// A mechanical finding is never produced for a subject the vague list does
+        /// not contain and which is ascii, whatever else it says. Without this, a
+        /// widened rule could start blocking arbitrary prose without anyone noticing.
+        #[test]
+        fn only_the_named_shapes_block(area in "[a-z]{1,10}", desc in "[a-zA-Z][a-zA-Z ]{2,40}") {
+            let subject = format!("{}: {}", area, desc);
+            prop_assume!(!VAGUE_EXACT.contains(&desc.trim().to_ascii_lowercase().as_str()));
+            let f = check_with(&subject, false, false);
+            prop_assert!(
+                f.iter().all(|x| x.tier != Tier::Mechanical),
+                "{subject:?} produced a blocking finding: {f:?}"
+            );
+        }
+    }
+}

@@ -152,6 +152,7 @@ name = "host-lint-ffmpeg"
 version = "0.14.2"
 dependencies = [
  "host-lint",
+ "proptest",
 ]
 
 [[package]]
