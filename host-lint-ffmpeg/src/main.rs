@@ -6,6 +6,7 @@ mod maintainers;
 mod mail;
 mod msg;
 mod rules;
+mod series;
 mod sha256;
 
 use std::env;
@@ -45,6 +46,91 @@ fn refuse_engine_skew() {
 /// traced to the file that set it rather than guessed at.
 /// The forge lane: `forge --title <t> [--body <b>] [--draft]`.
 /// The mail lane: `mail <format-patch-dir> [--maintainers <file>]`.
+/// The series lane: `series <range> [--repo <dir>]`, e.g. `series HEAD~5..HEAD`.
+fn run_series(args: &[String]) -> ! {
+    let val = |flag: &str| -> Option<String> {
+        args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
+    };
+    let Some(range) = args.iter().find(|a| !a.starts_with("--")).cloned() else {
+        eprintln!("usage: host-lint pack ffmpeg series <range> [--repo <dir>]");
+        process::exit(2);
+    };
+    let repo = val("--repo").unwrap_or_else(|| ".".to_string());
+
+    let git = |a: &[&str]| -> Result<String, String> {
+        let o = process::Command::new("git")
+            .arg("-C").arg(&repo).args(a)
+            .output()
+            .map_err(|e| format!("cannot run git: {e}"))?;
+        if !o.status.success() {
+            return Err(format!("git {:?} failed: {}", a, String::from_utf8_lossy(&o.stderr).trim()));
+        }
+        Ok(String::from_utf8_lossy(&o.stdout).to_string())
+    };
+
+    // Oldest first: the provider-before-consumer checks depend on the order.
+    let ids = match git(&["rev-list", "--reverse", "--no-merges", &range]) {
+        Ok(s) => s.split_whitespace().map(str::to_string).collect::<Vec<_>>(),
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: {e}");
+            process::exit(2);
+        }
+    };
+    if ids.is_empty() {
+        eprintln!("host-lint-ffmpeg: {range} names no commits");
+        process::exit(2);
+    }
+
+    let mut commits = Vec::new();
+    for id in &ids {
+        let subject = git(&["log", "-1", "--format=%s", id]).unwrap_or_default().trim().to_string();
+        let body = git(&["log", "-1", "--format=%b", id]).unwrap_or_default();
+        let diff = git(&["show", "--format=", "--unified=3", id]).unwrap_or_default();
+        let status = git(&["show", "--format=", "--name-status", id]).unwrap_or_default();
+        let mut added = Vec::new();
+        let mut touched = Vec::new();
+        for line in status.lines() {
+            let mut it = line.split('\t');
+            let Some(kind) = it.next() else { continue };
+            let Some(path) = it.next() else { continue };
+            if kind.starts_with('A') {
+                added.push(path.to_string());
+            } else {
+                touched.push(path.to_string());
+            }
+        }
+        commits.push(series::Commit {
+            id: id[..9.min(id.len())].to_string(),
+            subject,
+            body,
+            added_paths: added,
+            touched_paths: touched,
+            diff,
+        });
+    }
+
+    let findings = series::check(&commits);
+    let mode = config::load(std::path::Path::new(&repo))
+        .map(|c| c.mode)
+        .unwrap_or(config::Mode::Advise);
+    if findings.is_empty() {
+        println!("series: {} commit(s), nothing to report", commits.len());
+        process::exit(0);
+    }
+    let mut blocking = false;
+    for f in &findings {
+        let label = match f.tier {
+            rules::Tier::Mechanical => {
+                blocking = true;
+                "flag"
+            }
+            _ => "warn",
+        };
+        println!("{label}: {}: {} — {}", f.commit, f.rule, f.detail);
+    }
+    process::exit(verdict(blocking, mode));
+}
+
 fn run_mail(args: &[String]) -> ! {
     let val = |flag: &str| -> Option<String> {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
@@ -577,6 +663,7 @@ fn main() {
         Some("branch") => run_branch(&args[1..]),
         Some("forge") => run_forge(&args[1..]),
         Some("mail") => run_mail(&args[1..]),
+        Some("series") => run_series(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,
