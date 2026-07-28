@@ -18,6 +18,12 @@ flag()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0
 warn()  { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 3 ] && ok "warn: $1"  || bad "warn (want rc=3, got $rc): $1"; }
 clean() { local rc; printf '%s\n' "$1" | $BINARY --stdin >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 0 ] && ok "clean: $1" || bad "clean (want rc=0, got $rc): $1"; }
 
+# Assert the exact exit code of a scan given explicit file arguments. rc=2 is the
+# usage/IO error code, distinct from every lint verdict, so a fail-open regression
+# (a bad path reported clean at 0) cannot hide behind "nonzero".
+errs()  { local rc; $BINARY "$@" >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 2 ] && ok "errs: $*" || bad "errs (want rc=2, got $rc): $*"; }
+files_clean() { local rc; $BINARY "$@" >/dev/null 2>&1 && rc=0 || rc=$?; [ "$rc" -eq 0 ] && ok "file clean: $*" || bad "file clean (want rc=0, got $rc): $*"; }
+
 echo "=== Integration Tests ==="
 echo "Binary: $BINARY"
 echo ""
@@ -542,6 +548,40 @@ git -C "$argdir" -c user.email=t@t -c user.name=t commit -qm init
 
 # --- Summary ---
 echo ""
+# --- Explicit file arguments fail closed (host-lint#23) ---
+echo ""
+echo "--- Explicit file arguments (expect rc=2 on anything unscannable) ---"
+
+FCDIR=$(mktemp -d)
+trap 'rm -rf "$FCDIR"' EXIT
+
+# A named path that does not exist. This exited 0 clean, so a typo in a hook or a CI
+# line reported a clean audit over a file nobody ever opened.
+errs "$FCDIR/does-not-exist.md"
+
+# A named directory is not a file to scan, and saying so beats scanning nothing.
+mkdir -p "$FCDIR/adir"
+errs "$FCDIR/adir"
+
+# One good file beside one bad one still fails closed: a partial audit reported as
+# clean is the same fail-open wearing a smaller hat.
+printf 'A clean heading\n' > "$FCDIR/ok.md"
+errs "$FCDIR/ok.md" "$FCDIR/does-not-exist.md"
+
+# The good file alone still passes, so the check above is about the bad path rather
+# than about giving the tool more than one argument.
+files_clean "$FCDIR/ok.md"
+
+# The `--all` walk keeps its silent non-file skip: a tracked-but-deleted path is
+# policy there, not an error, and this is the case that stops the fix leaking into it.
+ALLDIR=$FCDIR/repo
+mkdir -p "$ALLDIR"
+( cd "$ALLDIR" && git init -q . && printf 'A clean heading\n' > kept.md && printf 'x\n' > gone.md \
+  && git add -A && git -c user.email=t@t -c user.name=t commit -qm init && rm gone.md ) >/dev/null 2>&1
+( cd "$ALLDIR" && "$OLDPWD/$BINARY" --all >/dev/null 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] && ok "--all skips a tracked-but-deleted file by verdict, not by error" \
+                || bad "--all fail-closed leak (want rc=0, got $rc)"
+
 echo "=== Results ==="
 echo "Passed: $PASS / $TOTAL"
 echo "Failed: $FAIL / $TOTAL"
