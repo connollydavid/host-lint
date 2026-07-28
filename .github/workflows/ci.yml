@@ -156,6 +156,7 @@ jobs:
       - name: allium analyse
         run: allium analyse host-lint.allium
       - name: allium plan (test obligations)
+        run: allium plan host-lint.allium
       # The pack's own surface (host-lint#22, spec-obligations). A spec no workflow
       # reads is an ungated spec, and this one carries the invariants that keep the
       # tiers honest.
@@ -165,7 +166,6 @@ jobs:
         run: allium analyse host-lint-ffmpeg/ffmpeg-pack.allium
       - name: allium plan (ffmpeg pack)
         run: allium plan host-lint-ffmpeg/ffmpeg-pack.allium
-        run: allium plan host-lint.allium
       - name: Install host-lifecycle (pinned)
         run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
       - name: Lint obligations (dispositioned, exercises-linked, inputs not stale)
