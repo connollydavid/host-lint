@@ -459,7 +459,10 @@ chmod +x "$packdir/host-lint-fake"
 out=$(PATH="$packdir:$PATH" "$BINARY_ABS" pack fake alpha beta 2>&1) && rc=0 || rc=$?
 { [ "$rc" -eq 0 ] && echo "$out" | grep -q 'args=alpha beta'; } && ok "pack: args pass through" || bad "pack: args pass through (rc=$rc: $out)"
 echo "$out" | grep -qE 'HOST_LINT_VERSION=[0-9]+\.[0-9]+\.[0-9]+' && ok "pack: HOST_LINT_VERSION exported" || bad "pack: HOST_LINT_VERSION exported ($out)"
-for want in 1 3; do
+# Each exit code the child can end on, not a sample of them: 0 and 2 matter most,
+# because a dispatcher that collapsed them would turn a pack's clean run into an
+# error, or its usage error into a clean verdict.
+for want in 0 1 2 3; do
     FAKE_RC=$want PATH="$packdir:$PATH" "$BINARY_ABS" pack fake >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq "$want" ] && ok "pack: exit $want passes through" || bad "pack: exit $want passes through (rc=$rc)"
 done

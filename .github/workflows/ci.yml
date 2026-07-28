@@ -66,6 +66,38 @@ jobs:
             ${{ matrix.name }}
             host-lint-ffmpeg-*
 
+  # The fixture-licensing rule (host-lint#23): this repository is Unlicense and
+  # FFmpeg is LGPL/GPL, so a real upstream excerpt may only live under
+  # fixtures/upstream/ and only beside a PROVENANCE.md naming, per file, its source
+  # commit, upstream path, and license. A policy nothing checks is a policy that
+  # decays silently, and the decay here is a licensing one.
+  fixture-licensing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The policy is present
+        run: test -f host-lint-ffmpeg/fixtures/README.md
+      - name: Any upstream excerpt carries its provenance
+        run: |
+          set -euo pipefail
+          up=host-lint-ffmpeg/fixtures/upstream
+          if [ -d "$up" ]; then
+            test -f "$up/PROVENANCE.md" || {
+              echo "fixtures/upstream/ exists with no PROVENANCE.md naming each file's source commit, path and license" >&2
+              exit 1
+            }
+            # Every file beside the manifest must be named in it. An excerpt whose
+            # provenance nobody recorded is the case this gate exists for.
+            rc=0
+            while IFS= read -r f; do
+              base=$(basename "$f")
+              [ "$base" = PROVENANCE.md ] && continue
+              grep -qF "$base" "$up/PROVENANCE.md" || { echo "no provenance entry for $base" >&2; rc=1; }
+            done < <(find "$up" -type f)
+            exit $rc
+          fi
+          echo "no upstream excerpts; every fixture is synthesized"
+
   conformance:
     runs-on: ubuntu-latest
     steps:
