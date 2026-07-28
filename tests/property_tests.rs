@@ -1,7 +1,7 @@
 use host_lint::{
     check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
     check_warn, check_warn_with_units, classify_line, gather_candidates,
-    escalate_subject_decoration, is_numeral, is_strict_directive, parse_jira_keys,
+    escalate_subject_decoration, is_numeral, is_spelled_ordinal, is_strict_directive, parse_jira_keys,
     parse_lexicon_line, parse_unit_directive, path_ignored, scan_prose_text, scan_text,
     scan_text_with_allow, scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry,
     Severity, WARN_NOUNS,
@@ -165,7 +165,10 @@ proptest! {
         word in "[a-z]{3,10}"
     ) {
         let line = format!("{} {}", term, word);
-        if !is_numeral(&word) {
+        // The spelled band blocks exactly as the arabic one does, so "phase six" is a
+        // detection and not a miss. Guarding on `is_numeral` alone made this property
+        // true only while the generator avoided forty words; it eventually did not.
+        if !is_numeral(&word) && !is_spelled_ordinal(&word) {
             prop_assert!(check_line(&line).is_none(), "line: {}", line);
         }
     }

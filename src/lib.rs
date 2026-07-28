@@ -374,7 +374,12 @@ const SPELLED_ORDINALS: &[&str] = &[
     "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth", "twentieth",
 ];
 
-fn is_spelled_ordinal(word: &str) -> bool {
+/// Public so a property can exclude the spelled band the way it already excludes
+/// the arabic one. It was private, and the property that asserts "a flag term
+/// followed by a non-numeral is clean" guarded on `is_numeral` alone — which does
+/// not know "six". The property therefore passed only while its `[a-z]{3,10}`
+/// generator missed a forty-word set, and failed the first time it did not.
+pub fn is_spelled_ordinal(word: &str) -> bool {
     SPELLED_ORDINALS.contains(&word)
 }
 
