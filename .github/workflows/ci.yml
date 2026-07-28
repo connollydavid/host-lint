@@ -71,6 +71,44 @@ jobs:
   # fixtures/upstream/ and only beside a PROVENANCE.md naming, per file, its source
   # commit, upstream path, and license. A policy nothing checks is a policy that
   # decays silently, and the decay here is a licensing one.
+  # The one lane that needs the network (host-lint#22, upstream-drift-lane). It
+  # fetches each pinned source at upstream HEAD and compares it against the digests
+  # the corpus acknowledges. Drift in a rule-bearing section fails; drift elsewhere
+  # is reported and does not.
+  #
+  # Two properties matter more than the check itself. The fetching happens HERE, in
+  # the workflow, so the pack keeps no HTTP client and stays dependency-free, which
+  # is what the vendored bundle and the offline reproducible build rest on. And no
+  # offline gate depends on this job: a network outage or an upstream reorganisation
+  # must never be able to redden the build of a tree that has not changed.
+  upstream-drift:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the pack
+        run: cargo build --release -p host-lint-ffmpeg
+      - name: Fetch each pinned source at upstream HEAD
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/fftree/doc
+          base=https://raw.githubusercontent.com/FFmpeg/FFmpeg/master
+          for f in doc/developer.texi doc/mailing-list-faq.texi doc/fate.texi MAINTAINERS; do
+            curl -fsSL --proto '=https' --tlsv1.2 -o "/tmp/fftree/$f" "$base/$f"
+          done
+      - name: Compare against the acknowledged digests
+        run: ./target/release/host-lint-ffmpeg rules --verify-source /tmp/fftree
+      # The lane checked against its own contract, using the freshly fetched tree as
+      # the clean baseline: each source doctored in turn must fail, acknowledging
+      # must pass, and drift in a section stating no rules must not gate.
+      - name: The lane behaves as specified
+        run: ./host-lint-ffmpeg/test-drift.sh ./target/release/host-lint-ffmpeg /tmp/fftree
+      - name: Report the pin's age
+        if: always()
+        run: |
+          echo "Acknowledging drift is a deliberate corpus edit: re-encode the digests"
+          echo "in host-lint-ffmpeg/src/rules.rs and update UPSTREAM_COMMIT together."
+
   fixture-licensing:
     runs-on: ubuntu-latest
     steps:
