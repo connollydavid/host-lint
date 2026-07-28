@@ -1,3 +1,4 @@
+mod config;
 mod cosmetic;
 mod diff;
 mod msg;
@@ -36,6 +37,43 @@ fn refuse_engine_skew() {
 /// The message lane: `msg [--signoff] [<file>]`, or stdin. Exits 1 on a mechanical
 /// finding, 3 on heuristic findings alone, 0 clean, 2 on a usage or IO error, which
 /// is the core's own verdict split so a hook can treat both the same way.
+/// `config` shows what the pack resolved and where from, so a surprising mode can be
+/// traced to the file that set it rather than guessed at.
+fn run_config(args: &[String]) -> ! {
+    let dir = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .cloned()
+        .unwrap_or_else(|| ".".to_string());
+    match config::load(std::path::Path::new(&dir)) {
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: {e}");
+            process::exit(2);
+        }
+        Ok(c) => {
+            println!("source        {}", c.source);
+            println!("upstream_ref  {}", c.upstream_ref);
+            println!("mode          {} ({})", c.mode.as_str(),
+                if c.mode.blocks() { "mechanical findings block" } else { "nothing blocks" });
+            println!("branch_prefix {}", c.branch_prefix.as_deref().unwrap_or("(unset)"));
+            println!("tag_prefix    {}", c.tag_prefix.as_deref().unwrap_or("(unset)"));
+            process::exit(0);
+        }
+    }
+}
+
+/// The verdict a lane exits with, filtered through the project's mode. In advise and
+/// frozen modes a mechanical finding still PRINTS as a flag — the finding is what it
+/// is — and the exit code drops to the advisory one, because the mode governs
+/// consequences rather than truth.
+fn verdict(blocking: bool, mode: config::Mode) -> i32 {
+    match (blocking, mode.blocks()) {
+        (true, true) => 1,
+        (true, false) => 3,
+        (false, _) => 3,
+    }
+}
+
 fn run_msg(args: &[String]) -> ! {
     let signoff = args.iter().any(|a| a == "--signoff");
     let tracker = args.iter().any(|a| a == "--require-tracker");
@@ -59,6 +97,9 @@ fn run_msg(args: &[String]) -> ! {
         }
     };
 
+    let mode = config::load(std::path::Path::new("."))
+        .map(|c| c.mode)
+        .unwrap_or(config::Mode::Advise);
     let findings = msg::check_with(&text, signoff, tracker);
     if findings.is_empty() {
         process::exit(0);
@@ -74,7 +115,7 @@ fn run_msg(args: &[String]) -> ! {
         };
         println!("{label}: {} — {}", f.rule, f.detail);
     }
-    process::exit(if blocking { 1 } else { 3 });
+    process::exit(verdict(blocking, mode));
 }
 
 /// The added-line lane: `diff [<file>]`, or a unified diff on stdin.
@@ -98,6 +139,9 @@ fn run_diff(args: &[String]) -> ! {
         }
     };
 
+    let mode = config::load(std::path::Path::new("."))
+        .map(|c| c.mode)
+        .unwrap_or(config::Mode::Advise);
     let mut findings = diff::check_diff(&text);
     // The mixed cosmetic/functional check reads the whole diff rather than one line,
     // so it joins here rather than in the per-line pass.
@@ -128,7 +172,67 @@ fn run_diff(args: &[String]) -> ! {
             println!("{label}: {}:{}: {} — {}", f.path, f.line, f.rule, f.detail);
         }
     }
-    process::exit(if blocking { 1 } else { 3 });
+    process::exit(verdict(blocking, mode));
+}
+
+/// `branch` checks the current branch and its tags against the project's grammar,
+/// and reports whether the series is frozen. Frozen is derived from tags rather than
+/// declared, because a declaration goes stale the moment somebody tags.
+fn run_branch(args: &[String]) -> ! {
+    let dir = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .cloned()
+        .unwrap_or_else(|| ".".to_string());
+    let path = std::path::Path::new(&dir);
+    let cfg = match config::load(path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: {e}");
+            process::exit(2);
+        }
+    };
+    let out = process::Command::new("git")
+        .arg("-C").arg(&dir).args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output();
+    let branch = match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => {
+            eprintln!("host-lint-ffmpeg: cannot read the current branch of {dir}");
+            process::exit(2);
+        }
+    };
+
+    let mut blocking = false;
+    if !config::branch_ok(&cfg, &branch) {
+        blocking = true;
+        println!(
+            "flag: branch-grammar — {branch:?} does not start with the configured prefix {:?}",
+            cfg.branch_prefix.as_deref().unwrap_or("")
+        );
+    }
+    let tags = process::Command::new("git")
+        .arg("-C").arg(&dir).args(["tag", "--merged", &branch])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    for tag in tags.lines().map(str::trim).filter(|t| !t.is_empty()) {
+        if !config::tag_ok(&cfg, tag) {
+            blocking = true;
+            println!(
+                "flag: tag-grammar — {tag:?} does not start with the configured prefix {:?}",
+                cfg.tag_prefix.as_deref().unwrap_or("")
+            );
+        }
+    }
+    if config::is_frozen_branch(path, &cfg, &branch) {
+        println!("note: {branch} is a frozen series; findings report and never block");
+    }
+    if !blocking {
+        println!("branch: {branch} satisfies the project grammar");
+        process::exit(0);
+    }
+    process::exit(verdict(blocking, cfg.mode));
 }
 
 fn run_rules(args: &[String]) -> ! {
@@ -307,6 +411,8 @@ fn main() {
         Some("rules") => run_rules(&args[1..]),
         Some("msg") => run_msg(&args[1..]),
         Some("diff") => run_diff(&args[1..]),
+        Some("config") => run_config(&args[1..]),
+        Some("branch") => run_branch(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,

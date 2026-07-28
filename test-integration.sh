@@ -617,8 +617,13 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     printf 'avcodec/h264: fix a leak\n\nwhy it leaked\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 0 ] && ok "msg: a well-formed message is clean" || bad "msg: clean (rc=$rc)"
 
+    # rc=3 rather than 1: the default mode is advise, so a mechanical finding is
+    # reported and does not block until a project asks for enforce. The mode governs
+    # consequences; the finding itself is unchanged, and prints as a flag.
     printf 'avcodec/h264: fixed!\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
-    [ "$rc" -eq 1 ] && ok "msg: a subject upstream names unacceptable blocks (rc=1)" || bad "msg: mechanical (rc=$rc)"
+    [ "$rc" -eq 3 ] && ok "msg: a mechanical finding reports under the default advise mode" || bad "msg: mechanical (rc=$rc)"
+    printf 'avcodec/h264: fixed!\n' | "$FFPACK" msg 2>/dev/null | grep -q '^flag:' \
+        && ok "msg: and still prints as a flag, because the mode is not the truth" || bad "msg: flag label"
 
     printf 'Add a thing with no area\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 3 ] && ok "msg: a missing area prefix advises rather than blocks (rc=3)" || bad "msg: heuristic (rc=$rc)"
@@ -628,12 +633,12 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
 
     # Sign-off and tracker are project modes, not upstream rules: silent by default.
     printf 'avcodec/h264: fix a leak\n\nwhy\n' | "$FFPACK" msg --signoff >/dev/null 2>&1 && rc=0 || rc=$?
-    [ "$rc" -eq 1 ] && ok "msg --signoff: the project mode blocks when asked for" || bad "msg --signoff (rc=$rc)"
+    [ "$rc" -eq 3 ] && ok "msg --signoff: the project mode fires and reports" || bad "msg --signoff (rc=$rc)"
 
     # The added-line lane, and the exemptions the calibration grounded.
     printf -- '--- a/libavcodec/h264.c\n+++ b/libavcodec/h264.c\n@@ -1,0 +1,1 @@\n+    int x; \n' \
         | "$FFPACK" diff >/dev/null 2>&1 && rc=0 || rc=$?
-    [ "$rc" -eq 1 ] && ok "diff: trailing whitespace in C blocks" || bad "diff: trailing ws (rc=$rc)"
+    [ "$rc" -eq 3 ] && ok "diff: trailing whitespace in C is reported under advise" || bad "diff: trailing ws (rc=$rc)"
 
     # tests/ref is golden output, where the trailing space IS the expected bytes.
     printf -- '--- a/tests/ref/fate/x\n+++ b/tests/ref/fate/x\n@@ -1,0 +1,1 @@\n+TAG:brand=qt  \n' \
@@ -652,6 +657,34 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
 
     "$FFPACK" diff /nonexistent-diff >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 2 ] && ok "diff: an unreadable file exits 2" || bad "diff: unreadable (rc=$rc)"
+
+    # The project mode governs consequences, not truth: a mechanical finding still
+    # prints as a flag in every mode, and only enforce turns it into a blocking exit.
+    CFGDIR=$(mktemp -d)
+    for m in advise enforce frozen; do
+        printf 'mode = "%s"\n' "$m" > "$CFGDIR/.host-lint-ffmpeg.toml"
+        ( cd "$CFGDIR" && printf 'avcodec/h264: fixed!\n' | "$FFPACK" msg >/dev/null 2>&1 ) && rc=0 || rc=$?
+        case $m in
+            enforce) want=1 ;;
+            *)       want=3 ;;
+        esac
+        [ "$rc" -eq "$want" ] && ok "config: $m mode exits $want on a mechanical finding" \
+                              || bad "config: $m mode (want $want, got $rc)"
+    done
+
+    # A typo must be loud: a misspelled mode silently leaving the tree unguarded is
+    # the quiet failure this config exists to prevent.
+    printf 'mode = "enfroce"\n' > "$CFGDIR/.host-lint-ffmpeg.toml"
+    ( cd "$CFGDIR" && "$FFPACK" config >/dev/null 2>&1 ) && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "config: an unknown mode is an error, not a silent default" || bad "config: typo (rc=$rc)"
+
+    # The worktree file wins over the repository's, which is what lets one clone hold
+    # a frozen series and live work at once.
+    printf 'mode = "enforce"\n' > "$CFGDIR/host-lint-ffmpeg.toml"
+    printf 'mode = "frozen"\n' > "$CFGDIR/.host-lint-ffmpeg.toml"
+    ( cd "$CFGDIR" && "$FFPACK" config 2>/dev/null | grep -q 'mode          frozen' ) \
+        && ok "config: the worktree file wins over the repository" || bad "config: precedence"
+    rm -rf "$CFGDIR"
 else
     echo "  (pack binary absent; skipped)"
 fi

@@ -1,0 +1,22 @@
+# Example project pack config for host-lint-ffmpeg.
+#
+# Put this at a worktree root as `.host-lint-ffmpeg.toml`, or in the repository's
+# common git directory as `host-lint-ffmpeg.toml`. The worktree's own file wins,
+# because one clone can hold a frozen series in one worktree and live work in
+# another, and those need different modes at the same time.
+
+[ffmpeg]
+
+# The upstream ref this project checks its work against.
+upstream_ref = "master"
+
+# advise  — everything reports, nothing blocks. Adopt in this mode.
+# enforce — mechanical rules block, heuristics advise.
+# frozen  — a fixed reference series: findings report and never block, because a
+#           gate demanding the history be rewritten asks for the one thing the
+#           mode exists to forbid.
+mode = "advise"
+
+# Optional grammars. Omit either one to place no constraint.
+branch_prefix = "pgs"
+tag_prefix = "pgs-v"
