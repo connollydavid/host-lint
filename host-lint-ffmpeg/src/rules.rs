@@ -82,8 +82,15 @@ pub struct Section {
     pub source: &'static str,
     pub title: &'static str,
     pub sha256: &'static str,
-    /// Carries at least one `@subheading` stating a rule. The completeness test
-    /// requires every one of these to be mapped.
+    /// States rules. Detected by `@subheading` OR two or more normative statements
+    /// (must / should / shall / do not / never) in the body.
+    ///
+    /// The first version of this keyed on `@subheading` alone and was wrong about
+    /// eleven sections, "Naming conventions" among them, which states ten normative
+    /// rules in prose and an `@itemize` and carries no subheading at all. The
+    /// registry then claimed completeness over five sections while fifteen stated
+    /// rules, and the completeness test passed. A discovery heuristic narrower than
+    /// the thing it discovers is worse than none, because it produces a green.
     pub rule_bearing: bool,
 }
 
@@ -112,32 +119,32 @@ pub const SOURCES: &[Source] = &[
 ];
 
 pub const SECTIONS: &[Section] = &[
-    Section { source: "doc/developer.texi", title: "Introduction", sha256: "577941bfa97b46b860ebdfd4b3ba28a6741957b644480ee796558a1e60178c00", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Introduction", sha256: "577941bfa97b46b860ebdfd4b3ba28a6741957b644480ee796558a1e60178c00", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Coding Rules", sha256: "fbc1bbb3997a096754d4b8fd3905374db462a2c617c8ea2cb10c603fc5f1eac8", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Language", sha256: "c72d2f2973ff3b7e54b76732a8f663a21959b29b05425542a54665195311fb3d", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Language", sha256: "c72d2f2973ff3b7e54b76732a8f663a21959b29b05425542a54665195311fb3d", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "SIMD/DSP", sha256: "33fb4c409ac0f78bb2d4c45a5839b3542bf2be861dbe7445f85d3c7bf0eae3f4", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Other languages", sha256: "8e3b20619d8af73fd344f707451820cfa5ac37336514ffa1997a4d0b852d733b", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Code formatting conventions", sha256: "9842e28dc568a6a5145160c4fac9c968f205782cc269504830bbf9093436dc4b", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Examples", sha256: "24347c31ec9c4eb18c80feb92790784d1f07f2d752cf927256705d6ce880807d", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Vim configuration", sha256: "d3630f81d24c6a5bf2cda21a91a7590f5243b4b271ff475b8bc8482ad34a68f9", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Emacs configuration", sha256: "19a7ed022f8118e74d0a1392d9d18360136ef7e2435946101379807fe9d65fca", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Comments", sha256: "3e25315b539bc37f14c76044c5977b78eb4052670d8a996dbbcb517c265a2308", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Naming conventions", sha256: "26a4bfd4289b10119ddc355fc773e6f81a6bc09ea4ac57a0dc028bc4bfa9465c", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Miscellaneous conventions", sha256: "f0a4db743feca4c08b8e2d9a3967916cdbdf5a7f41c738d1beae0bfb48cf7241", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Comments", sha256: "3e25315b539bc37f14c76044c5977b78eb4052670d8a996dbbcb517c265a2308", rule_bearing: true },
+    Section { source: "doc/developer.texi", title: "Naming conventions", sha256: "26a4bfd4289b10119ddc355fc773e6f81a6bc09ea4ac57a0dc028bc4bfa9465c", rule_bearing: true },
+    Section { source: "doc/developer.texi", title: "Miscellaneous conventions", sha256: "f0a4db743feca4c08b8e2d9a3967916cdbdf5a7f41c738d1beae0bfb48cf7241", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Development Policy", sha256: "ab7cace5acde8e8514797b044fb683dae08acfb39477bda56a675793dd871b2a", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Code behaviour", sha256: "2881a255e63dbaa3a3f7bb86e0b8895ea5f4bb80dc9d0ea8a93e8b3977c1793e", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Patches/Committing", sha256: "653644de600130e555e01d86d8e130199d5f8abc954a9e98801b6c4ed4fb83e8", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Code", sha256: "8daf608e26e16e0a0e0212e0412ae237e255ce896020b962e52d3eff46969152", rule_bearing: true },
-    Section { source: "doc/developer.texi", title: "Library public interfaces", sha256: "1d9ca664716d471ac943a516b69ee4792b22527565be8a6ca6974a57ab9fd4ca", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Adding new interfaces", sha256: "dc2425bdee62543d65a4339a2e4d427800fb07a3705419f2cf25a36b8a3aa05a", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Removing interfaces", sha256: "679712e49f1f997a71cd03de58c512525ab3d3652138a8a150793de3f8a444cd", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Library public interfaces", sha256: "1d9ca664716d471ac943a516b69ee4792b22527565be8a6ca6974a57ab9fd4ca", rule_bearing: true },
+    Section { source: "doc/developer.texi", title: "Adding new interfaces", sha256: "dc2425bdee62543d65a4339a2e4d427800fb07a3705419f2cf25a36b8a3aa05a", rule_bearing: true },
+    Section { source: "doc/developer.texi", title: "Removing interfaces", sha256: "679712e49f1f997a71cd03de58c512525ab3d3652138a8a150793de3f8a444cd", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Major version bumps", sha256: "cc1f0821a4379c4b5dd5618a5d70896a50817237fb35be8a5859cdd35aa8aa08", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Documentation/Other", sha256: "cab3fc613c90f4e0e15c82d8e5b16111ad561597d52920888dba59ab8c6b6b70", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Submitting patches", sha256: "fa6c9023f38c1a5e4b3947f56f4b7b7fe841d09df955a7b6ca01c325f4caa34f", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "New codecs or formats checklist", sha256: "0ceed207797567b9cffa34bb34ac06e200b16c4366f7f79cb0ba5998f996135c", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Patch submission checklist", sha256: "7b7a97f3c047254014b1eb8d96dd66ad515749134925e86336207ad69d47318d", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Patch submission checklist", sha256: "7b7a97f3c047254014b1eb8d96dd66ad515749134925e86336207ad69d47318d", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Patch review process", sha256: "dd46ba3ca97d3b5e63707e2ef13ca02670ce718b13724dbf2b3ff54e2972f49e", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Regression tests", sha256: "c181c869988bba4597b6e520edbf6ca736f0fd64c32a75b04a4e42842fab750f", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Regression tests", sha256: "c181c869988bba4597b6e520edbf6ca736f0fd64c32a75b04a4e42842fab750f", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Adding files to the fate-suite dataset", sha256: "6b78ca24ae5c8294310cba3076e16b43b7442d65cced182986c6ddef38632644", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Visualizing Test Coverage", sha256: "6a00170dfbf143f1d5829bb016aaeb8508d16e1756a8906b88492550eba500a1", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Using Valgrind", sha256: "ff69f8e68d7128a64fb482fce6437daadbd9ac87456857ed5974e085573f1817", rule_bearing: false },
@@ -152,10 +159,10 @@ pub const SECTIONS: &[Section] = &[
 pub const RULES: &[Rule] = &[
     // --- Patches/Committing: the ten rules the message and diff lanes turn on ---
     Rule { id: "commit-msg-format", section: "Patches/Committing", subheading: "Commit messages",
-           tier: Tier::Mechanical, lane: Lane::Msg, measured_rate: None,
+           tier: Tier::Heuristic, lane: Lane::Msg, measured_rate: Some(0.990),
            summary: "A commit message is `area changed: short 1 line description`, then a blank line, then detail saying what and why" },
     Rule { id: "commit-msg-has-body", section: "Patches/Committing", subheading: "Commit messages",
-           tier: Tier::Heuristic, lane: Lane::Msg, measured_rate: None,
+           tier: Tier::Heuristic, lane: Lane::Msg, measured_rate: Some(1.000),
            summary: "The body explains what and why rather than restating the subject; `fixed!` and `Changed it.` are named upstream as unacceptable" },
     Rule { id: "commit-msg-cites-tracker", section: "Patches/Committing", subheading: "Commit messages",
            tier: Tier::Mechanical, lane: Lane::Msg, measured_rate: None,
@@ -237,6 +244,57 @@ pub const RULES: &[Rule] = &[
     Rule { id: "review-replies-addressed", section: "Submitting patches", subheading: "Reviews",
            tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
            summary: "Review comments are answered before a push" },
+    // --- Naming conventions: the namespacing rules, which is where the library-tree
+    //     scope earns its keep (fftools is a consumer, not a library) ---
+    Rule { id: "naming-lowercase-functions", section: "Naming conventions", subheading: "(prose)",
+           tier: Tier::Mechanical, lane: Lane::Diff, measured_rate: None,
+           summary: "Function, variable and struct-member names are lowercase with underscores; avfilter_get_video_buffer is acceptable and AVFilterGetVideo is not" },
+    Rule { id: "naming-camelcase-types", section: "Naming conventions", subheading: "(prose)",
+           tier: Tier::Mechanical, lane: Lane::Diff, measured_rate: None,
+           summary: "Struct, union, enum and typedef'd type names use CamelCase, and structs and unions are typedef'd to the same name as their tag" },
+    Rule { id: "naming-uppercase-constants", section: "Naming conventions", subheading: "(prose)",
+           tier: Tier::Mechanical, lane: Lane::Diff, measured_rate: None,
+           summary: "Enumeration constants and macros are UPPERCASE, except macros masquerading as functions, which follow the function convention" },
+    Rule { id: "naming-namespace-prefix", section: "Naming conventions", subheading: "(prose)",
+           tier: Tier::Heuristic, lane: Lane::Diff, measured_rate: Some(1.000),
+           summary: "In the libraries, ff_ prefixes identifiers visible outside file scope within one library and avpriv_ those used across libraries; file-scope and member names take no prefix" },
+
+    // --- Comments ---
+    Rule { id: "comment-nontrivial-functions", section: "Comments", subheading: "(prose)",
+           tier: Tier::Heuristic, lane: Lane::Diff, measured_rate: None,
+           summary: "A nontrivial function carries a comment above it saying what it does, and structures and their members are documented" },
+
+    // --- Language ---
+    Rule { id: "language-c11-headers-c99", section: "Language", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Build, measured_rate: None,
+           summary: "The tree is C11, public headers stay C99-compatible, and compiler extensions may be used but never depended on" },
+
+    // --- Miscellaneous conventions ---
+    Rule { id: "misc-conventions", section: "Miscellaneous conventions", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "The remaining conventions the section states, which are judgement rather than shape" },
+
+    // --- The public-interface lifecycle: process rather than artifact ---
+    Rule { id: "api-interface-discipline", section: "Library public interfaces", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "A public interface change follows the documented interface discipline" },
+    Rule { id: "api-adding-interfaces", section: "Adding new interfaces", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "A new public interface follows the documented addition process, including its version and documentation obligations" },
+    Rule { id: "api-removing-interfaces", section: "Removing interfaces", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "Removing a public interface follows the deprecation and major-bump process" },
+
+    // --- Introduction, Patch submission checklist, Regression tests ---
+    Rule { id: "submit-for-review", section: "Introduction", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "Proposed changes are submitted for review, and comply with the Development Policy and Coding Rules" },
+    Rule { id: "submission-checklist", section: "Patch submission checklist", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "The patch submission checklist is worked through before sending" },
+    Rule { id: "regression-tests-run", section: "Regression tests", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Build, measured_rate: None,
+           summary: "Before submitting, the author tests that nothing broke, and updates reference results where a change legitimately alters them" },
 ];
 
 /// Every rule-bearing section, with the rules mapped to it. The completeness test
@@ -371,18 +429,49 @@ mod tests {
         assert_eq!(before, ids.len(), "duplicate rule id");
     }
 
-    /// A mechanical or heuristic tier is a claim about detectability that the
-    /// calibration node has to measure. Until it runs, no rule may carry a rate:
-    /// a number nobody measured is worse than an empty field, because it reads as
-    /// evidence.
+    /// A rate may only appear on a rule whose lane exists and was measured. The
+    /// calibration record is CALIBRATION.md; a rule in a lane that is not built yet
+    /// cannot have been measured, so it may not carry a number. A number nobody
+    /// measured is worse than an empty field, because it reads as evidence.
     #[test]
-    fn no_rule_claims_an_unmeasured_rate() {
+    fn only_measured_lanes_carry_a_rate() {
         for r in RULES {
-            assert!(
-                r.measured_rate.is_none(),
-                "{} carries a rate before the calibration node ran",
-                r.id
+            if let Some(v) = r.measured_rate {
+                assert!(
+                    matches!(r.lane, Lane::Msg | Lane::Diff),
+                    "{} carries a rate but its {} lane is not built or measured",
+                    r.id,
+                    r.lane.as_str()
+                );
+                assert!((0.0..=1.0).contains(&v), "{} has an impossible rate {v}", r.id);
+            }
+        }
+    }
+
+    /// An attested rule can never carry a rate: there is nothing to measure, and a
+    /// number beside it would imply the tool decides it.
+    /// The registry and the lanes must agree. commit-msg-format was mechanical here
+    /// while the message lane already emitted it as heuristic, so the corpus
+    /// documented a blocking rule the checker did not enforce as one.
+    #[test]
+    fn the_measured_message_rules_are_not_blocking() {
+        // Any rule whose measured rate is below 1.0 flagged accepted upstream work,
+        // so it cannot be a blocking tier whatever the registry says.
+        for r in RULES.iter().filter(|r| r.measured_rate.is_some_and(|v| v < 1.0)) {
+            assert_eq!(
+                r.tier,
+                Tier::Heuristic,
+                "{} measured {:?} on accepted history and cannot be mechanical",
+                r.id,
+                r.measured_rate
             );
+        }
+    }
+
+    #[test]
+    fn attested_rules_never_carry_a_rate() {
+        for r in RULES.iter().filter(|r| r.tier == Tier::Attested) {
+            assert!(r.measured_rate.is_none(), "{} is attested and carries a rate", r.id);
         }
     }
 

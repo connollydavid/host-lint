@@ -629,6 +629,29 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     # Sign-off and tracker are project modes, not upstream rules: silent by default.
     printf 'avcodec/h264: fix a leak\n\nwhy\n' | "$FFPACK" msg --signoff >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 1 ] && ok "msg --signoff: the project mode blocks when asked for" || bad "msg --signoff (rc=$rc)"
+
+    # The added-line lane, and the exemptions the calibration grounded.
+    printf -- '--- a/libavcodec/h264.c\n+++ b/libavcodec/h264.c\n@@ -1,0 +1,1 @@\n+    int x; \n' \
+        | "$FFPACK" diff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 1 ] && ok "diff: trailing whitespace in C blocks" || bad "diff: trailing ws (rc=$rc)"
+
+    # tests/ref is golden output, where the trailing space IS the expected bytes.
+    printf -- '--- a/tests/ref/fate/x\n+++ b/tests/ref/fate/x\n@@ -1,0 +1,1 @@\n+TAG:brand=qt  \n' \
+        | "$FFPACK" diff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "diff: golden-output whitespace is exempt" || bad "diff: golden exemption (rc=$rc)"
+
+    # A .mak file needs its tab.
+    printf -- '--- a/tests/fate/x.mak\n+++ b/tests/fate/x.mak\n@@ -1,0 +1,1 @@\n+\tthing\n' \
+        | "$FFPACK" diff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "diff: a Makefile-class tab is exempt" || bad "diff: mak tab (rc=$rc)"
+
+    # An em-dash in a comment is accepted upstream; the same bytes in code are not.
+    printf -- '--- a/libavcodec/h264.c\n+++ b/libavcodec/h264.c\n@@ -1,0 +1,1 @@\n+// note \xe2\x80\x94 fine\n' \
+        | "$FFPACK" diff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "diff: non-ascii in a comment is accepted, as upstream does" || bad "diff: comment non-ascii (rc=$rc)"
+
+    "$FFPACK" diff /nonexistent-diff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "diff: an unreadable file exits 2" || bad "diff: unreadable (rc=$rc)"
 else
     echo "  (pack binary absent; skipped)"
 fi

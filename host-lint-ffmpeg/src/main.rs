@@ -1,3 +1,4 @@
+mod diff;
 mod msg;
 mod rules;
 mod sha256;
@@ -71,6 +72,45 @@ fn run_msg(args: &[String]) -> ! {
             _ => "warn",
         };
         println!("{label}: {} — {}", f.rule, f.detail);
+    }
+    process::exit(if blocking { 1 } else { 3 });
+}
+
+/// The added-line lane: `diff [<file>]`, or a unified diff on stdin.
+fn run_diff(args: &[String]) -> ! {
+    let file = args.iter().find(|a| !a.starts_with("--"));
+    let text = match file {
+        Some(f) => match fs::read_to_string(f) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: cannot read {f}: {e}");
+                process::exit(2);
+            }
+        },
+        None => {
+            let mut s = String::new();
+            if let Err(e) = io::Read::read_to_string(&mut io::stdin(), &mut s) {
+                eprintln!("host-lint-ffmpeg: cannot read stdin: {e}");
+                process::exit(2);
+            }
+            s
+        }
+    };
+
+    let findings = diff::check_diff(&text);
+    if findings.is_empty() {
+        process::exit(0);
+    }
+    let mut blocking = false;
+    for f in &findings {
+        let label = match f.tier {
+            rules::Tier::Mechanical => {
+                blocking = true;
+                "flag"
+            }
+            _ => "warn",
+        };
+        println!("{label}: {}:{}: {} — {}", f.path, f.line, f.rule, f.detail);
     }
     process::exit(if blocking { 1 } else { 3 });
 }
@@ -218,9 +258,10 @@ fn run_rules(args: &[String]) -> ! {
     }
     println!();
     println!(
-        "-- {} rule(s) over {} rule-bearing section(s); every tier is declared and none is measured yet",
+        "-- {} rule(s) over {} rule-bearing section(s); {} carry a measured rate (CALIBRATION.md)",
         rules::RULES.len(),
-        rules::SECTIONS.iter().filter(|s| s.rule_bearing).count()
+        rules::SECTIONS.iter().filter(|s| s.rule_bearing).count(),
+        rules::RULES.iter().filter(|r| r.measured_rate.is_some()).count()
     );
     process::exit(0);
 }
@@ -249,6 +290,7 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("rules") => run_rules(&args[1..]),
         Some("msg") => run_msg(&args[1..]),
+        Some("diff") => run_diff(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,
