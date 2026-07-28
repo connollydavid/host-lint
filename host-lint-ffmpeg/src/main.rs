@@ -1,3 +1,4 @@
+mod cosmetic;
 mod diff;
 mod msg;
 mod rules;
@@ -97,7 +98,18 @@ fn run_diff(args: &[String]) -> ! {
         }
     };
 
-    let findings = diff::check_diff(&text);
+    let mut findings = diff::check_diff(&text);
+    // The mixed cosmetic/functional check reads the whole diff rather than one line,
+    // so it joins here rather than in the per-line pass.
+    for c in cosmetic::check(&text) {
+        findings.push(diff::Finding {
+            rule: c.rule,
+            tier: c.tier,
+            path: String::new(),
+            line: 0,
+            detail: c.detail,
+        });
+    }
     if findings.is_empty() {
         process::exit(0);
     }
@@ -110,7 +122,11 @@ fn run_diff(args: &[String]) -> ! {
             }
             _ => "warn",
         };
-        println!("{label}: {}:{}: {} — {}", f.path, f.line, f.rule, f.detail);
+        if f.path.is_empty() {
+            println!("{label}: {} — {}", f.rule, f.detail);
+        } else {
+            println!("{label}: {}:{}: {} — {}", f.path, f.line, f.rule, f.detail);
+        }
     }
     process::exit(if blocking { 1 } else { 3 });
 }

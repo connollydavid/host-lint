@@ -67,12 +67,35 @@ wider than the evidence.
 | `naming-namespace-prefix` | heuristic | 300 commits | 300 | 1.000 |
 | `diff-narrow-scope` | heuristic | 300 commits | 298 | 0.993 |
 | `diff-avoption-self-describing` | heuristic | 300 commits | 298 | 0.993 |
+| `cosmetic-separate` | heuristic | 300 commits | 294 | 0.980 |
 
 A rate of 1.000 on a heuristic rule is not a promotion to mechanical. It means the
 corpus did not exercise it, and a rule that never fires has not been shown to work.
 `naming-namespace-prefix` is the case in point: zero hits across 300 commits is
 consistent with a well-scoped rule and equally consistent with one too narrow to
 fire, and this corpus cannot distinguish them.
+
+## The classifier the measurement rewrote twice
+
+`cosmetic-separate` is the clearest case for calibrating before shipping, because two
+plausible designs both failed and only measurement said so.
+
+The first counted any brace or blank line on the functional side as a cosmetic
+change, and reported **213 of 300** accepted commits as mixed (rate 0.290): adding a
+new function adds braces and blank lines, and neither is a change to existing
+formatting. Corrected so that "cosmetic present" means a removed/added pair that
+cancelled under normalisation — an edit to existing code that was layout only — it
+reported **108 of 300** (rate 0.640).
+
+Still unusable, and for a reason the rule's own wording hides. A functional change
+routinely reformats the lines it touches, and upstream accepts that; what it asks is
+that an unrelated re-indent not be bundled with a fix. So the unit is the hunk, not
+the diff: the reportable shape is a purely cosmetic hunk beside a functional one.
+That reports **6 of 300** (rate 0.980).
+
+The lesson generalises past this rule. A rule firing on 71% of accepted work would be
+muted the day it shipped, and nothing in its specification said which unit to judge
+it over. Only the corpus did.
 
 ## What is not calibrated
 
