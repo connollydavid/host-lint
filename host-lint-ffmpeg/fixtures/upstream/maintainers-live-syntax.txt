@@ -1,0 +1,21 @@
+A (CC <address>) after the name means that the maintainer prefers to be CC-ed on
+
+Codecs:
+  aacenc*, aaccoder.c                   Rostislav Pehlivanov
+  alsdec.c                              Thilo Borgmann, Umair Khan
+  amfdec*,amfenc*                   [2] Dmitrii Ovchinnikov, Araz Iusubov
+  asv*                                  Michael Niedermayer
+
+Muxers/Demuxers:
+  aadec.c                               Vesselin Bontchev (vesselin.bontchev at yandex dot com)
+  evc*                                  Samsung (Dawid Kozinski)
+  dshow.c                               Roger Pack (CC rogerdpack@gmail.com)
+
+Filters:
+  vf_bwdif                              Thomas Mundt (CC <thomas.mundt@hr.de>)
+  vf_(t)interlace                       Thomas Mundt (CC <thomas.mundt@hr.de>)
+  vf_readvitc.c                         Tobias Rapp (CC t.rapp at noa-archive dot com)
+  vf_xfade_vulkan.c                 [2] Marvin Scholz (CC <epirat07@gmail.com>)
+
+Operating systems / CPU architectures:
+  Linux / PowerPC                   [2] Sean McGovern (CC <gseanmcg@gmail.com>), Lauri Kasanen

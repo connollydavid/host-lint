@@ -2,12 +2,15 @@ mod config;
 mod cosmetic;
 mod diff;
 mod forge;
+mod maintainers;
+mod mail;
 mod msg;
 mod rules;
 mod sha256;
 
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use std::io;
 use std::process;
 
@@ -41,6 +44,122 @@ fn refuse_engine_skew() {
 /// `config` shows what the pack resolved and where from, so a surprising mode can be
 /// traced to the file that set it rather than guessed at.
 /// The forge lane: `forge --title <t> [--body <b>] [--draft]`.
+/// The mail lane: `mail <format-patch-dir> [--maintainers <file>]`.
+fn run_mail(args: &[String]) -> ! {
+    let val = |flag: &str| -> Option<String> {
+        args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
+    };
+    let Some(dir) = args.iter().find(|a| !a.starts_with("--")).cloned() else {
+        eprintln!("usage: host-lint pack ffmpeg mail <format-patch-dir> [--maintainers <file>]");
+        process::exit(2);
+    };
+
+    let maint = match val("--maintainers") {
+        Some(f) => match fs::read_to_string(&f) {
+            Ok(s) => maintainers::parse(&s),
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: cannot read {f}: {e}");
+                process::exit(2);
+            }
+        },
+        None => Vec::new(),
+    };
+
+    let mut files: Vec<PathBuf> = match fs::read_dir(&dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("patch"))
+            .collect(),
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: cannot read {dir}: {e}");
+            process::exit(2);
+        }
+    };
+    files.sort();
+    if files.is_empty() {
+        eprintln!("host-lint-ffmpeg: {dir} holds no .patch files");
+        process::exit(2);
+    }
+
+    // A file the lane cannot parse is an error, never a clean message: a directory
+    // with a stray file in it must not report as a well-formed series.
+    let mut msgs = Vec::new();
+    let mut touched: Vec<String> = Vec::new();
+    for f in &files {
+        let name = f.display().to_string();
+        let text = match fs::read_to_string(f) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: cannot read {name}: {e}");
+                process::exit(2);
+            }
+        };
+        for line in text.lines() {
+            if let Some(p) = line.strip_prefix("+++ b/") {
+                if !touched.iter().any(|t| t == p) {
+                    touched.push(p.to_string());
+                }
+            }
+        }
+        match mail::parse_message(&name, &text) {
+            Ok(m) => msgs.push(m),
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: {e}");
+                process::exit(2);
+            }
+        }
+    }
+
+    // Thread targeting, when the caller supplies the prior version's message ids.
+    // Without them the lane cannot judge, and it says so rather than passing: a
+    // missing input reading as a clean result is the shape this pack refuses.
+    let prior: Vec<String> = val("--prior-thread")
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+        .unwrap_or_default();
+    let prior_refs: Vec<&str> = prior.iter().map(String::as_str).collect();
+
+    let touched_refs: Vec<&str> = touched.iter().map(String::as_str).collect();
+    let mut findings = mail::check_series(&msgs);
+    for m in &msgs {
+        findings.extend(mail::check_message(m, &touched_refs, &maint));
+        match mail::thread_target_ok(m, &prior_refs) {
+            Some(false) => findings.push(mail::Finding {
+                rule: "mail-thread-hijack",
+                tier: rules::Tier::Mechanical,
+                file: m.file.clone(),
+                detail: format!(
+                    "In-Reply-To targets {:?}, which is not this series' prior thread; the reviewers of the earlier version never see it",
+                    m.in_reply_to.as_deref().unwrap_or("")
+                ),
+            }),
+            Some(true) => {}
+            None if m.in_reply_to.is_some() && prior.is_empty() => {
+                println!("note: {} threads onto {:?}; pass --prior-thread <ids> to check the target", m.file, m.in_reply_to.as_deref().unwrap_or(""));
+            }
+            None => {}
+        }
+    }
+
+    let mode = config::load(std::path::Path::new("."))
+        .map(|c| c.mode)
+        .unwrap_or(config::Mode::Advise);
+    if findings.is_empty() {
+        println!("mail: {} message(s) over {} touched path(s), nothing to report", msgs.len(), touched.len());
+        process::exit(0);
+    }
+    let mut blocking = false;
+    for f in &findings {
+        let label = match f.tier {
+            rules::Tier::Mechanical => {
+                blocking = true;
+                "flag"
+            }
+            _ => "warn",
+        };
+        println!("{label}: {}: {} — {}", f.file, f.rule, f.detail);
+    }
+    process::exit(verdict(blocking, mode));
+}
+
 fn run_forge(args: &[String]) -> ! {
     let val = |flag: &str| -> Option<String> {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
@@ -457,6 +576,7 @@ fn main() {
         Some("config") => run_config(&args[1..]),
         Some("branch") => run_branch(&args[1..]),
         Some("forge") => run_forge(&args[1..]),
+        Some("mail") => run_mail(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,

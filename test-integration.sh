@@ -685,6 +685,34 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     ( cd "$CFGDIR" && "$FFPACK" config 2>/dev/null | grep -q 'mode          frozen' ) \
         && ok "config: the worktree file wins over the repository" || bad "config: precedence"
     rm -rf "$CFGDIR"
+
+    # The mail lane, over real `git format-patch` output.
+    MAILDIR=$(mktemp -d)
+    ( cd "$MAILDIR" && git init -q . && mkdir -p libavfilter \
+      && printf 'int x;\n' > libavfilter/vf_bwdif.c && git add -A \
+      && git -c user.email=a@b -c user.name=A commit -qm "avfilter/vf_bwdif: add x" \
+      && printf 'int y;\n' >> libavfilter/vf_bwdif.c && git add -A \
+      && git -c user.email=a@b -c user.name=A commit -qm "avfilter/vf_bwdif: add y" \
+      && git format-patch -q --cover-letter -o out -2 ) >/dev/null 2>&1 || true
+
+    "$FFPACK" mail "$MAILDIR/out" >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "mail: a well-formed format-patch series is clean" || bad "mail: clean series (rc=$rc)"
+
+    # A maintainer who asked to be CC-ed and is not in the Cc list.
+    MF=$(dirname "$FFPACK")/../../host-lint-ffmpeg/fixtures/upstream/maintainers-live-syntax.txt
+    if [ -f "$MF" ]; then
+        "$FFPACK" mail "$MAILDIR/out" --maintainers "$MF" 2>/dev/null | grep -q 'mail-missing-maintainer-cc' \
+            && ok "mail: a maintainer who asked to be CC-ed is required" || bad "mail: maintainer cc"
+    fi
+
+    # A stray file is a parse error, never a clean series.
+    printf 'not a patch\n' > "$MAILDIR/out/stray.patch"
+    "$FFPACK" mail "$MAILDIR/out" >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "mail: an unparseable file exits 2 rather than reporting clean" || bad "mail: stray file (rc=$rc)"
+
+    "$FFPACK" mail "$(mktemp -d)" >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "mail: an empty directory exits 2" || bad "mail: empty dir (rc=$rc)"
+    rm -rf "$MAILDIR"
 else
     echo "  (pack binary absent; skipped)"
 fi
