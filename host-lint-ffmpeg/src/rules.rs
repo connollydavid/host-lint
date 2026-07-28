@@ -421,6 +421,88 @@ pub fn drifted_sections(tree: &std::path::Path) -> Result<Vec<Drift>, String> {
     Ok(drifted)
 }
 
+/// The vocabulary that makes a prose line normative, in the order it was learned.
+/// The last four arrived from a section this classifier had already called inert:
+/// "The TAB character is FORBIDDEN outside of Makefiles as is any form of trailing
+/// whitespace. Commits containing either will be REJECTED" states a rule without
+/// using must, should, shall, never or do-not once.
+const NORMATIVE: &[&str] = &[
+    "must", "should", "shall", "do not", "never", "forbidden", "rejected", "required", "prohibited",
+];
+
+/// Whether a section states rules, derived from its text.
+///
+/// This exists because `rule_bearing` was a hand-set boolean for three revisions and
+/// was wrong in two of them, each time presenting as a passing completeness test: the
+/// registry mapped every section it believed stated rules, and believed wrong. A
+/// number that is asserted cannot be checked. A number that is derived can be, and
+/// `--verify-source` now checks it on every run against the real tree.
+///
+/// The heuristic is the one the table was ultimately built by hand from: an
+/// `@subheading` marks a rule list outright, and otherwise two or more normative
+/// statements in PROSE do. Code blocks are excluded because the Vim recipe's
+/// "forbidden" sits inside a config-file comment, and counting it made a snippet of
+/// editor configuration look like policy.
+pub fn classify_rule_bearing(body: &str) -> bool {
+    let prose = prose_lines(body);
+    if prose.iter().any(|l| l.trim_start().starts_with("@subheading")) {
+        return true;
+    }
+    prose.iter().filter(|l| states_a_norm(l)).count() >= 2
+}
+
+/// Section lines outside `@example`/`@verbatim`/`@smallexample` blocks.
+fn prose_lines(body: &str) -> Vec<&str> {
+    let (mut out, mut in_code) = (Vec::new(), false);
+    for line in body.lines() {
+        let t = line.trim_start();
+        if t.starts_with("@example") || t.starts_with("@verbatim") || t.starts_with("@smallexample") {
+            in_code = true;
+        } else if t.starts_with("@end example") || t.starts_with("@end verbatim") || t.starts_with("@end smallexample") {
+            in_code = false;
+        } else if !in_code {
+            out.push(line);
+        }
+    }
+    out
+}
+
+/// Whether a line carries a normative token as a WHOLE word. Substring matching
+/// would read "must" out of "mustache" and, more to the point here, "required" out
+/// of "requirements", turning a sentence about what a codec needs into a rule.
+fn states_a_norm(line: &str) -> bool {
+    let low = line.to_ascii_lowercase();
+    NORMATIVE.iter().any(|w| {
+        low.match_indices(w).any(|(i, _)| {
+            let before = low[..i].chars().next_back();
+            let after = low[i + w.len()..].chars().next();
+            let edge = |c: Option<char>| c.is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            edge(before) && edge(after)
+        })
+    })
+}
+
+/// Sections whose recorded `rule_bearing` disagrees with what their text derives to,
+/// as `(title, derived, recorded)`.
+///
+/// On an undrifted tree a disagreement means the recorded boolean was never right —
+/// the failure this project hit three times. After upstream drift it means a section
+/// changed what kind of section it is, which is exactly where a new rule appears.
+pub fn classification_disagreements(tree: &std::path::Path) -> Result<Vec<(String, bool, bool)>, String> {
+    let p = tree.join("doc/developer.texi");
+    let text = std::fs::read_to_string(&p).map_err(|e| format!("cannot read {}: {e}", p.display()))?;
+    let mut out = Vec::new();
+    for (title, body) in split_sections(&text) {
+        if let Some(pinned) = SECTIONS.iter().find(|s| s.source == "doc/developer.texi" && s.title == title) {
+            let derived = classify_rule_bearing(&body);
+            if derived != pinned.rule_bearing {
+                out.push((title, derived, pinned.rule_bearing));
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Split a texinfo file into (heading, body) at chapter/section/subsection level,
 /// the same boundaries the pinned digests were computed over.
 pub fn split_sections(text: &str) -> Vec<(String, String)> {
@@ -464,6 +546,45 @@ mod tests {
         "forge-versioned-title", "forge-draft", "forge-description-cover",
         "forge-rationale-in-commits",
     ];
+
+    /// The classifier against the three cases that actually defeated the hand-set
+    /// booleans, quoted from the pinned tree. Each of these was a false green: the
+    /// completeness test passed while the section was invisible to it.
+    #[test]
+    fn the_classifier_catches_what_three_hand_passes_missed() {
+        // Pass 1 found only @subheading, so a section stating rules in flat prose and
+        // an @itemize was invisible. Two normative statements, no subheading.
+        let naming = "@subsection Naming conventions\nAll names should be composed with underscores.\n\
+                      Names of functions must be prefixed with the library name.\n";
+        assert!(classify_rule_bearing(naming), "prose rules count without a subheading");
+
+        // Pass 2 had must/should/shall/never/do-not, and this states a rule with none
+        // of them. It is the reason the vocabulary has a second half.
+        let formatting = "@section Code formatting conventions\n\
+                          The TAB character is FORBIDDEN outside of Makefiles as is any form of \
+                          trailing whitespace.\nCommits containing either will be REJECTED.\n";
+        assert!(classify_rule_bearing(formatting), "FORBIDDEN/REJECTED are normative too");
+
+        // Pass 3 counted the Vim recipe, whose "forbidden" is a comment inside an
+        // @example. A config snippet is not policy.
+        let vim = "@subsection Vim configuration\nPut this in your .vimrc:\n@example\n\
+                   \" tabs are forbidden, and trailing whitespace is rejected\nset expandtab\n\
+                   @end example\n";
+        assert!(!classify_rule_bearing(vim), "code blocks are not prose");
+
+        // And the plain inert case: one normative word is a remark, not a rule list.
+        let examples = "@subsection Examples\nThis example should help.\n";
+        assert!(!classify_rule_bearing(examples), "one statement is not a rule-bearing section");
+    }
+
+    /// Whole-word matching. Substring matching would read "required" out of
+    /// "requirements" and turn a sentence about what a codec needs into a rule.
+    #[test]
+    fn normative_tokens_match_as_whole_words() {
+        let noise = "@section Introduction\nThe requirements are documented elsewhere.\n\
+                     A mustache is not a rule.\n";
+        assert!(!classify_rule_bearing(noise));
+    }
 
     /// The completeness rule this registry exists for: upstream adding a
     /// rule-bearing section must redden a test rather than be silently absent. A

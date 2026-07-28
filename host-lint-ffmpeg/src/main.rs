@@ -752,15 +752,45 @@ fn run_rules(args: &[String]) -> ! {
             eprintln!("usage: host-lint pack ffmpeg rules --verify-source <ffmpeg-tree>");
             process::exit(2);
         };
-        match rules::drifted_sections(std::path::Path::new(tree)) {
+        // Which sections state rules is re-derived from the tree and compared with the
+        // recorded booleans, because that classification is the corpus's denominator:
+        // every completeness claim the registry makes is "over the rule-bearing
+        // sections", and it was hand-set and wrong twice while the completeness test
+        // stayed green. A disagreement here is not drift in upstream's text, it is the
+        // registry describing that text incorrectly.
+        let path = std::path::Path::new(tree);
+        let mut misjudged = 0usize;
+        match rules::classification_disagreements(path) {
             Err(e) => {
                 eprintln!("host-lint-ffmpeg: {e}");
                 process::exit(2);
             }
-            Ok(d) if d.is_empty() => {
+            Ok(bad) => {
+                for (title, derived, recorded) in &bad {
+                    // Recorded inert while the text states rules is the direction that
+                    // loses coverage silently: the section maps no rules and its drift
+                    // is downgraded to "moved". The opposite over-gates, which is loud.
+                    let verdict = if *derived { "MISJUDGED" } else { "over-gated" };
+                    println!(
+                        "{verdict}  doc/developer.texi: {title} — text derives rule_bearing={derived}, table records {recorded}"
+                    );
+                    if *derived {
+                        misjudged += 1;
+                    }
+                }
+            }
+        }
+        match rules::drifted_sections(path) {
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: {e}");
+                process::exit(2);
+            }
+            Ok(d) if d.is_empty() && misjudged == 0 => {
                 println!(
-                    "rules: every pinned section matches {tree} at {}",
-                    rules::UPSTREAM_COMMIT
+                    "rules: every pinned section matches {tree} at {}, and all {} section(s) classify as recorded ({} rule-bearing)",
+                    rules::UPSTREAM_COMMIT,
+                    rules::SECTIONS.len(),
+                    rules::SECTIONS.iter().filter(|s| s.rule_bearing).count()
                 );
                 process::exit(0);
             }
@@ -773,11 +803,12 @@ fn run_rules(args: &[String]) -> ! {
                     println!("moved  {} (states no rules; reported, not gating)", s.what);
                 }
                 println!(
-                    "-- {gating} rule-bearing section(s) differ from the corpus pinned at {}; {} other section(s) moved",
+                    "-- {gating} rule-bearing section(s) differ from the corpus pinned at {}; {} other section(s) moved; \
+                     {misjudged} section(s) state rules the table records as stating none",
                     rules::UPSTREAM_COMMIT,
                     d.len() - gating
                 );
-                process::exit(if gating > 0 { 1 } else { 0 });
+                process::exit(if gating > 0 || misjudged > 0 { 1 } else { 0 });
             }
         }
     }
@@ -889,10 +920,17 @@ fn run_rules(args: &[String]) -> ! {
         println!("  {id:<32} {why}");
     }
     println!();
+    // The denominator is stated, not just the count. "45 rules over 18 sections" is
+    // unfalsifiable on its face; "18 of 35, classified by @subheading or two or more
+    // normative prose statements" invites the reader to doubt the 18 — which is what
+    // three wrong values of it needed and never got.
     println!(
-        "-- {} rule(s) over {} rule-bearing section(s); {} carry a measured rate (CALIBRATION.md)",
+        "-- {} rule(s) over {} of {} section(s) classified rule-bearing (an @subheading, or two or \
+         more normative statements outside code blocks; re-derived by `rules --verify-source`); \
+         {} carry a measured rate (CALIBRATION.md)",
         rules::RULES.len(),
         rules::SECTIONS.iter().filter(|s| s.rule_bearing).count(),
+        rules::SECTIONS.len(),
         rules::RULES.iter().filter(|r| r.measured_rate.is_some()).count()
     );
     process::exit(0);

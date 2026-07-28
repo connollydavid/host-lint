@@ -63,6 +63,35 @@ case $out in
     *) bad "non-gating drift not reported" ;;
 esac
 
+# The fourth part of the contract: which sections state rules is the corpus's
+# denominator, and it was hand-set and wrong twice while every completeness test
+# stayed green. It is now re-derived from the tree on each run. Upstream adding rules
+# to a section the table records as inert is the direction that loses coverage in
+# silence — without this check it reports as "moved, not gating" and exits 0.
+cp "$TREE/doc/developer.texi" "$work/doc/developer.texi"
+python3 - "$work/doc/developer.texi" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+j = t.find("@subsection Vim configuration")
+p.write_text(t[:j] + "\nEvery example must compile.\nContributors should never submit one that does not.\n" + t[j:])
+PY
+out=$("$PACK" rules --verify-source "$work" 2>&1); rc=$?
+want "$rc" 1 "a section that becomes rule-bearing gates rather than reporting as moved"
+case $out in
+    *MISJUDGED*) ok "the misjudged section is named" ;;
+    *) bad "misjudged section not named" ;;
+esac
+cp "$TREE/doc/developer.texi" "$work/doc/developer.texi"
+
+# And the classification agrees with the table on the acknowledged tree, which is the
+# claim the other three parts rest on.
+out=$("$PACK" rules --verify-source "$work" 2>&1); rc=$?
+want "$rc" 0 "the acknowledged tree classifies as recorded"
+case $out in
+    *"classify as recorded"*) ok "the verdict states the denominator it checked" ;;
+    *) bad "verdict does not state the denominator" ;;
+esac
+
 echo ""
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
