@@ -14,7 +14,7 @@ requires an entry for every file beside this one.
 - **License:** FFmpeg is LGPL-2.1-or-later with GPL parts. These are commit
   subject lines, used here as measured ground truth for calibrating a checker
   against what upstream actually accepts, not as a copy of the work.
-- **Why it cannot be synthesized:** the whole point is that these subjects were
+- Synthesis cannot reach this, because the whole point is that these subjects were
   *accepted upstream*. A synthesized subject proves nothing about what the
   project's reviewers let through, and the rate this corpus measures is the only
   honest basis for a rule's tier.
@@ -29,7 +29,7 @@ requires an entry for every file beside this one.
   is coherent. No line was edited.
 - **License:** FFmpeg is LGPL-2.1-or-later with GPL parts. These are maintainer
   attribution lines, used as a parser fixture.
-- **Why it cannot be synthesized:** the parser's whole risk is the *observed*
+- Synthesis cannot reach this either: the parser's whole risk is the *observed*
   syntax, and a synthesized file would only exercise the shapes I already thought
   of. These lines carry the three CC forms actually in use (angle-bracketed, bare,
   and obfuscated `at`/`dot`), the two parenthesized forms that are NOT a CC request

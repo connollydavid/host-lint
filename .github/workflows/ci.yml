@@ -109,6 +109,20 @@ jobs:
           echo "Acknowledging drift is a deliberate corpus edit: re-encode the digests"
           echo "in host-lint-ffmpeg/src/rules.rs and update UPSTREAM_COMMIT together."
 
+  # RULES.md is generated from src/rules.rs, so it cannot drift from the table the
+  # checker reads. Regenerating and finding a diff means somebody edited the document
+  # instead of the registry, which is how a rule table starts lying.
+  rules-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: RULES.md matches the registry
+        run: |
+          set -euo pipefail
+          cp host-lint-ffmpeg/RULES.md /tmp/RULES.committed
+          ./host-lint-ffmpeg/make-rules-doc.sh
+          diff -u /tmp/RULES.committed host-lint-ffmpeg/RULES.md
+
   fixture-licensing:
     runs-on: ubuntu-latest
     steps:

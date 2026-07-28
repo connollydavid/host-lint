@@ -345,7 +345,7 @@ pub const PROJECT_RULES: &[(&str, &str)] = &[
     ("forge-title-grammar", "code.ffmpeg.org relays the title as the list subject; the forge is not upstream doctrine"),
     ("forge-versioned-title", "forge revision discipline reuses one pull request; a mail-series version does not apply"),
     ("forge-draft", "the WIP marker is a forge convention"),
-    ("forge-description-cover", "the description serves as a cover letter on the forge only"),
+    ("forge-description-cover", "the description is the cover letter on the forge, and only there"),
     ("forge-rationale-in-commits", "a forge description never enters git history; upstream documents no forge"),
 ];
 

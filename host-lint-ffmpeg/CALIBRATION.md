@@ -30,9 +30,9 @@ defensible at all.
 Three findings changed the design rather than confirming it.
 
 **The area-prefix rule cannot block.** 489 of 500 accepted subjects carry an
-`area: description` prefix; 495 do once the exemptions apply. The remaining five are
-ordinary accepted commits with prose subjects (`Guard against loop underflow`,
-`Add new mode to mpdecimate video filter`). A mechanical tier would have rejected
+`area: description` prefix; 495 do once the exemptions apply. The remaining five are ordinary
+accepted commits with prose subjects, such as `Guard against loop underflow` and
+`Add new mode to mpdecimate video filter`. A mechanical tier would have rejected
 upstream's own work about once in a hundred commits, so the rule is heuristic.
 
 **`Reapply "..."` is an exemption the design did not name.** It appears in accepted
@@ -43,13 +43,13 @@ are exempt for the pre-submission case rather than this one.
 
 **The ascii rule had to be inverted.** The design lists `ascii-comments` among the
 diff checks. Comments are exactly where upstream uses non-ascii: of the eleven
-non-ascii added lines, three are `→` in a C comment, four are `—` in comments (C and
-`.mak`), one is a name in a copyright line (`Kacper Michajłow`), and one is `Schloß`
-in golden test data. A rule flagging non-ascii in comments would have reported ten of
+non-ascii added lines, three are arrows in a C comment, four are em-dashes in comments
+(C and `.mak`), one is a name in a copyright line (`Kacper Michajłow`), and one is
+`Schloß` in golden test data. A rule flagging non-ascii in comments would have reported ten of
 eleven accepted lines. The rule is scoped to code instead, where the corpus holds
 zero occurrences.
 
-Two exemptions moved from designed to grounded. All five trailing-whitespace
+The measurement also grounded two exemptions that had been designed rather than observed. All five trailing-whitespace
 occurrences are `tests/ref` golden files, where the trailing space is the expected
 output. The single tab is in a Makefile-class file. Neither exemption needs to be
 wider than the evidence.
@@ -83,8 +83,8 @@ plausible designs both failed and only measurement said so.
 The first counted any brace or blank line on the functional side as a cosmetic
 change, and reported **213 of 300** accepted commits as mixed (rate 0.290): adding a
 new function adds braces and blank lines, and neither is a change to existing
-formatting. Corrected so that "cosmetic present" means a removed/added pair that
-cancelled under normalisation — an edit to existing code that was layout only — it
+formatting. Corrected so that "cosmetic present" means a removed/added pair
+that cancelled under normalisation (an edit to existing code that was layout only), it
 reported **108 of 300** (rate 0.640).
 
 Still unusable, and for a reason the rule's own wording hides. A functional change
@@ -100,13 +100,14 @@ it over. Only the corpus did.
 ## What is not calibrated
 
 The attested rules, which no measurement can reach: they are the ones a human
-answers. Their tier is not a claim about detectability but a statement that
-detectability is not available.
+answers. Their tier states that detectability is not available, which is a different kind of
+claim from a rate.
 
 The rules whose lanes are not built yet (`series`, `mail`, `build`) carry no rate,
 and a test refuses to let them acquire one until their lane exists and is measured
 the same way.
 
-The corpus spans three weeks. It is enough to disprove a mechanical tier — one
-counter-example does that — and thin for the opposite claim, which is why a 1.000
-here is written down as "not exercised" rather than as confidence.
+The corpus spans three weeks. One counter-example is
+enough to disprove a mechanical tier, so three weeks settles that direction. The
+opposite claim needs far more, which is why a 1.000 here is written down as "not
+exercised" rather than as confidence.
