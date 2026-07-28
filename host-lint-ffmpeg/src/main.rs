@@ -51,6 +51,146 @@ fn refuse_engine_skew() {
 /// The series lane: `series <range> [--repo <dir>]`, e.g. `series HEAD~5..HEAD`.
 /// `receipt --record <name>=<passed|failed> ... --base <sha> --head <sha>` writes a
 /// build receipt, and `receipt --show <head>` reads one back.
+/// `install-hooks [<worktree>]` lands the hooks in the worktree's PRIVATE gitdir.
+///
+/// Per worktree, not per clone, because the mode is per worktree: one worktree can be
+/// a frozen series while another is live work, and a hook in the shared common dir
+/// would apply one worktree's mode to the other.
+///
+/// Nothing lands in the target tree itself, tracked or untracked. A tool that dropped
+/// a config file into a working tree would show up in `git status` and eventually in
+/// somebody's commit.
+fn run_install_hooks(args: &[String]) -> ! {
+    let dir = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .cloned()
+        .unwrap_or_else(|| ".".to_string());
+
+    let git = |a: &[&str]| -> Result<String, String> {
+        let o = process::Command::new("git")
+            .arg("-C").arg(&dir).args(a)
+            .output()
+            .map_err(|e| format!("cannot run git: {e}"))?;
+        if !o.status.success() {
+            return Err(format!("git {:?} failed: {}", a, String::from_utf8_lossy(&o.stderr).trim()));
+        }
+        Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+
+    // The worktree's own gitdir. For a linked worktree this is
+    // `<common>/worktrees/<name>`; for the main one it is `<common>` itself.
+    //
+    // `--git-path hooks` is NOT the way to find a per-worktree hooks directory: it
+    // resolves to the SHARED hooks dir even from a linked worktree, so installing in
+    // two worktrees wrote the same file twice and the second silently replaced the
+    // first. Per-worktree hooks need `core.hooksPath` in the worktree's private
+    // config, which is what `extensions.worktreeConfig` unlocks.
+    let gitdir = match git(&["rev-parse", "--absolute-git-dir"]) {
+        Ok(s) => PathBuf::from(s),
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: {dir} is not a git worktree ({e})");
+            process::exit(2);
+        }
+    };
+    let hooks = gitdir.join("host-lint-ffmpeg-hooks");
+
+    // Per-worktree config has to be enabled once per clone before `--worktree` works.
+    if let Err(e) = git(&["config", "extensions.worktreeConfig", "true"]) {
+        eprintln!("host-lint-ffmpeg: cannot enable per-worktree config: {e}");
+        process::exit(2);
+    }
+    if let Err(e) = fs::create_dir_all(&hooks) {
+        eprintln!("host-lint-ffmpeg: cannot create {}: {e}", hooks.display());
+        process::exit(2);
+    }
+
+    let core = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("host-lint")))
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "host-lint".to_string());
+    let pack = env::current_exe()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "host-lint-ffmpeg".to_string());
+
+    // Both versions are stamped together, and the hook refuses a skewed pair rather
+    // than linting with mismatched semantics. Written as a raw template with markers
+    // substituted, because a format string carrying shell quoting is unreadable and
+    // Rust reads `"$CORE"` in one as a string prefix.
+    const COMMIT_MSG: &str = r#"#!/usr/bin/env bash
+# Installed by host-lint-ffmpeg @PACK_VER@. Core and pack are stamped together, and a
+# skewed pair refuses rather than linting with mismatched semantics.
+set -u
+CORE='@CORE@'
+PACK='@PACK@'
+PACK_VER='@PACK_VER@'
+
+pack_now=$("$PACK" --pack-version 2>/dev/null)
+if [ -n "$pack_now" ] && [ "$pack_now" != "$PACK_VER" ]; then
+  echo "commit-msg: pack is $pack_now and this hook was stamped for $PACK_VER; reinstall the pair" >&2
+  exit 2
+fi
+
+# The core naming scan first, then the pack's message lane. The WORST verdict wins: a
+# clean pack lane must never clear a core flag.
+rc=0
+"$CORE" --stdin < "$1" || rc=$?
+prc=0
+"$PACK" msg "$1" || prc=$?
+for code in 2 1 3; do
+  if [ "$rc" -eq "$code" ] || [ "$prc" -eq "$code" ]; then exit "$code"; fi
+done
+exit 0
+"#;
+
+    const PRE_COMMIT: &str = r#"#!/usr/bin/env bash
+# Installed by host-lint-ffmpeg @PACK_VER@. Runs the added-line lane over the staged
+# diff, so a forbidden tab or trailing space is caught before it lands.
+set -u
+PACK='@PACK@'
+git diff --cached --unified=3 | "$PACK" diff
+"#;
+
+    let fill = |tpl: &str| {
+        tpl.replace("@CORE@", &core)
+            .replace("@PACK@", &pack)
+            .replace("@PACK_VER@", env!("CARGO_PKG_VERSION"))
+    };
+    let commit_msg = fill(COMMIT_MSG);
+    let pre_commit = fill(PRE_COMMIT);
+
+    for (name, body) in [("commit-msg", &commit_msg), ("pre-commit", &pre_commit)] {
+        let path = hooks.join(name);
+        if let Err(e) = fs::write(&path, body) {
+            eprintln!("host-lint-ffmpeg: cannot write {}: {e}", path.display());
+            process::exit(2);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o755));
+        }
+        println!("installed {}", path.display());
+    }
+
+    // Point this worktree, and only this worktree, at those hooks.
+    if let Err(e) = git(&["config", "--worktree", "core.hooksPath", &hooks.display().to_string()]) {
+        eprintln!("host-lint-ffmpeg: cannot set this worktree's hooksPath: {e}");
+        process::exit(2);
+    }
+
+    // The mode this worktree will use, printed so a two-worktree install is legible.
+    match config::load(std::path::Path::new(&dir)) {
+        Ok(c) => println!("mode {} (from {})", c.mode.as_str(), c.source),
+        Err(e) => {
+            eprintln!("host-lint-ffmpeg: {e}");
+            process::exit(2);
+        }
+    }
+    process::exit(0);
+}
+
 fn run_receipt(args: &[String]) -> ! {
     let val = |flag: &str| -> Option<String> {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
@@ -779,6 +919,10 @@ fn json_str(s: &str) -> String {
 fn main() {
     refuse_engine_skew();
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--pack-version") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        process::exit(0);
+    }
     match args.first().map(String::as_str) {
         Some("rules") => run_rules(&args[1..]),
         Some("msg") => run_msg(&args[1..]),
@@ -790,6 +934,7 @@ fn main() {
         Some("series") => run_series(&args[1..]),
         Some("receipt") => run_receipt(&args[1..]),
         Some("checklist") => run_checklist(&args[1..]),
+        Some("install-hooks") => run_install_hooks(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,

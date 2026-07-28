@@ -746,6 +746,57 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     grep -q 'awaiting a human' "$RCDIR/report.txt" \
         && ok "checklist: the summary names what nobody has established" || bad "checklist: summary"
     rm -rf "$RCDIR"
+
+    # The hook installer, per worktree. `--git-path hooks` gives the SHARED hooks dir
+    # even from a linked worktree, so this needs core.hooksPath in the worktree's own
+    # config; without that, installing twice writes one file twice.
+    HKDIR=$(mktemp -d)
+    ( cd "$HKDIR" && git init -q main && cd main && printf 'x\n' > f && git add -A \
+      && git -c user.email=t@t -c user.name=t commit -qm "avcodec/x: init" \
+      && git worktree add -q ../other -b other ) >/dev/null 2>&1 || true
+
+    printf 'mode = "enforce"\n' > "$HKDIR/main/.host-lint-ffmpeg.toml"
+    printf 'mode = "frozen"\n'  > "$HKDIR/other/.host-lint-ffmpeg.toml"
+    ( cd "$HKDIR/main"  && "$FFPACK" install-hooks . ) >/dev/null 2>&1
+    ( cd "$HKDIR/other" && "$FFPACK" install-hooks . ) >/dev/null 2>&1
+
+    hp_main=$( cd "$HKDIR/main"  && git config --worktree --get core.hooksPath 2>/dev/null )
+    hp_other=$( cd "$HKDIR/other" && git config --worktree --get core.hooksPath 2>/dev/null )
+    if [ -n "$hp_main" ] && [ "$hp_main" != "$hp_other" ]; then
+        ok "install-hooks: each worktree points at its own hooks"
+    else
+        bad "install-hooks: worktrees share a hooks path ($hp_main vs $hp_other)"
+    fi
+
+    # A phase tell must be blocked by the chained CORE scan, not only by the pack.
+    before=$( cd "$HKDIR/main" && git rev-list --count HEAD )
+    ( cd "$HKDIR/main" && printf 'y\n' >> f && git add f \
+      && git -c user.email=t@t -c user.name=t commit -qm "## Phase 1: setup the thing" ) >/dev/null 2>&1 && rc=0 || rc=$?
+    after=$( cd "$HKDIR/main" && git rev-list --count HEAD )
+    if [ "$rc" -ne 0 ] && [ "$before" = "$after" ]; then
+        ok "install-hooks: a phase tell is blocked by the chained core scan"
+    else
+        bad "install-hooks: phase tell not blocked (rc=$rc, $before -> $after)"
+    fi
+
+    ( cd "$HKDIR/main" && git -c user.email=t@t -c user.name=t commit -qm "avcodec/x: add y" ) >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "install-hooks: a clean message commits" || bad "install-hooks: clean commit blocked (rc=$rc)"
+
+    before=$( cd "$HKDIR/main" && git rev-list --count HEAD )
+    ( cd "$HKDIR/main" && printf '\tint z;\n' >> f && git add f \
+      && git -c user.email=t@t -c user.name=t commit -qm "avcodec/x: add z" ) >/dev/null 2>&1 && rc=0 || rc=$?
+    after=$( cd "$HKDIR/main" && git rev-list --count HEAD )
+    if [ "$rc" -ne 0 ] && [ "$before" = "$after" ]; then
+        ok "install-hooks: a staged tab is blocked by pre-commit"
+    else
+        bad "install-hooks: staged tab not blocked (rc=$rc)"
+    fi
+
+    # Nothing the installer added may appear in the target tree.
+    stray=$( cd "$HKDIR/main" && git status --porcelain | grep -v 'host-lint-ffmpeg.toml' | grep '^??' || true )
+    [ -z "$stray" ] && ok "install-hooks: git status shows nothing the installer added" \
+                    || bad "install-hooks: left files in the tree: $stray"
+    rm -rf "$HKDIR"
 else
     echo "  (pack binary absent; skipped)"
 fi
