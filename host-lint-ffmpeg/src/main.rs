@@ -1,3 +1,4 @@
+mod checklist;
 mod config;
 mod cosmetic;
 mod diff;
@@ -5,6 +6,7 @@ mod forge;
 mod maintainers;
 mod mail;
 mod msg;
+mod receipt;
 mod rules;
 mod series;
 mod sha256;
@@ -47,6 +49,128 @@ fn refuse_engine_skew() {
 /// The forge lane: `forge --title <t> [--body <b>] [--draft]`.
 /// The mail lane: `mail <format-patch-dir> [--maintainers <file>]`.
 /// The series lane: `series <range> [--repo <dir>]`, e.g. `series HEAD~5..HEAD`.
+/// `receipt --record <name>=<passed|failed> ... --base <sha> --head <sha>` writes a
+/// build receipt, and `receipt --show <head>` reads one back.
+fn run_receipt(args: &[String]) -> ! {
+    let val = |flag: &str| -> Option<String> {
+        args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
+    };
+    let repo = val("--repo").unwrap_or_else(|| ".".to_string());
+    let common = match process::Command::new("git")
+        .arg("-C").arg(&repo).args(["rev-parse", "--git-common-dir"]).output()
+    {
+        Ok(o) if o.status.success() => {
+            let p = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            let pb = PathBuf::from(&p);
+            if pb.is_absolute() { pb } else { PathBuf::from(&repo).join(pb) }
+        }
+        _ => {
+            eprintln!("host-lint-ffmpeg: {repo} is not a git repository");
+            process::exit(2);
+        }
+    };
+
+    if let Some(head) = val("--show") {
+        let path = receipt::receipt_path(&common, &head);
+        match fs::read_to_string(&path) {
+            Ok(s) => match receipt::Receipt::parse(&s) {
+                Ok(r) => {
+                    print!("{}", r.export());
+                    // Staleness is the reader's first question, so answer it here.
+                    let now = process::Command::new("git")
+                        .arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_default();
+                    if !now.is_empty() && receipt::is_stale(&r, &now) {
+                        println!("stale: recorded for {} and HEAD is now {now}", r.head);
+                        process::exit(3);
+                    }
+                    process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("host-lint-ffmpeg: {}: {e}", path.display());
+                    process::exit(2);
+                }
+            },
+            Err(_) => {
+                println!("note: no receipt for {head}; the expensive legs have not been run here");
+                process::exit(3);
+            }
+        }
+    }
+
+    let (Some(base), Some(head)) = (val("--base"), val("--head")) else {
+        eprintln!("usage: host-lint pack ffmpeg receipt --base <sha> --head <sha> [--record <leg>=<passed|failed>]... | --show <head>");
+        process::exit(2);
+    };
+    let mut legs = Vec::new();
+    for (i, a) in args.iter().enumerate() {
+        if a == "--record" {
+            if let Some(spec) = args.get(i + 1) {
+                let (name, res) = spec.split_once('=').unwrap_or((spec.as_str(), "unrun"));
+                if !receipt::LEGS.contains(&name) {
+                    eprintln!("host-lint-ffmpeg: unknown leg {name:?}; known legs: {:?}", receipt::LEGS);
+                    process::exit(2);
+                }
+                legs.push((
+                    name.to_string(),
+                    match res {
+                        "passed" => receipt::LegResult::Passed,
+                        "failed" => receipt::LegResult::Failed,
+                        _ => receipt::LegResult::Unrun,
+                    },
+                ));
+            }
+        }
+    }
+    let r = receipt::Receipt {
+        base,
+        head: head.clone(),
+        toolchain: val("--toolchain").unwrap_or_else(|| "unrecorded".to_string()),
+        config_digest: receipt::config_digest(&[val("--config").unwrap_or_default().as_str()]),
+        legs,
+    };
+    let path = receipt::receipt_path(&common, &head);
+    if let Some(dir) = path.parent() {
+        if let Err(e) = fs::create_dir_all(dir) {
+            eprintln!("host-lint-ffmpeg: cannot create {}: {e}", dir.display());
+            process::exit(2);
+        }
+    }
+    if let Err(e) = fs::write(&path, r.export()) {
+        eprintln!("host-lint-ffmpeg: cannot write {}: {e}", path.display());
+        process::exit(2);
+    }
+    println!("wrote {}", path.display());
+    process::exit(0);
+}
+
+/// `checklist [--reported <id,id>] [--receipt <head>]` renders the registry.
+fn run_checklist(args: &[String]) -> ! {
+    let val = |flag: &str| -> Option<String> {
+        args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
+    };
+    let reported: Vec<String> = val("--reported")
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+        .unwrap_or_default();
+    let reported_refs: Vec<&str> = reported.iter().map(String::as_str).collect();
+
+    let rec = val("--receipt").and_then(|head| {
+        let repo = val("--repo").unwrap_or_else(|| ".".to_string());
+        let out = process::Command::new("git")
+            .arg("-C").arg(&repo).args(["rev-parse", "--git-common-dir"]).output().ok()?;
+        let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let pb = PathBuf::from(&p);
+        let common = if pb.is_absolute() { pb } else { PathBuf::from(&repo).join(pb) };
+        fs::read_to_string(receipt::receipt_path(&common, &head))
+            .ok()
+            .and_then(|s| receipt::Receipt::parse(&s).ok())
+    });
+
+    print!("{}", checklist::format_report(&checklist::render(&reported_refs, rec.as_ref())));
+    process::exit(0);
+}
+
 fn run_series(args: &[String]) -> ! {
     let val = |flag: &str| -> Option<String> {
         args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
@@ -664,6 +788,8 @@ fn main() {
         Some("forge") => run_forge(&args[1..]),
         Some("mail") => run_mail(&args[1..]),
         Some("series") => run_series(&args[1..]),
+        Some("receipt") => run_receipt(&args[1..]),
+        Some("checklist") => run_checklist(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,

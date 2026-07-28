@@ -713,6 +713,39 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     "$FFPACK" mail "$(mktemp -d)" >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 2 ] && ok "mail: an empty directory exits 2" || bad "mail: empty dir (rc=$rc)"
     rm -rf "$MAILDIR"
+
+    # Build receipts, and the property they exist for: an unrun leg is never passed.
+    RCDIR=$(mktemp -d)
+    ( cd "$RCDIR" && git init -q . && printf 'x\n' > f && git add -A \
+      && git -c user.email=t@t -c user.name=t commit -qm i ) >/dev/null 2>&1 || true
+    RH=$( cd "$RCDIR" && git rev-parse HEAD )
+
+    ( cd "$RCDIR" && "$FFPACK" receipt --show "$RH" >/dev/null 2>&1 ) && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "receipt: an absent receipt notes rather than passing" || bad "receipt: absent (rc=$rc)"
+
+    ( cd "$RCDIR" && "$FFPACK" receipt --base "$RH" --head "$RH" --record compile=passed >/dev/null 2>&1 )
+    ( cd "$RCDIR" && "$FFPACK" receipt --show "$RH" >/dev/null 2>&1 ) && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "receipt: a current receipt reads clean" || bad "receipt: current (rc=$rc)"
+
+    ( cd "$RCDIR" && printf 'y\n' >> f && git add -A \
+      && git -c user.email=t@t -c user.name=t commit -qm j ) >/dev/null 2>&1 || true
+    ( cd "$RCDIR" && "$FFPACK" receipt --show "$RH" >/dev/null 2>&1 ) && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "receipt: a rewritten head makes the receipt stale (warn)" || bad "receipt: stale (rc=$rc)"
+
+    ( cd "$RCDIR" && "$FFPACK" receipt --base "$RH" --head "$RH" --record nosuchleg=passed >/dev/null 2>&1 ) && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "receipt: an unknown leg is an error" || bad "receipt: unknown leg (rc=$rc)"
+
+    # The checklist keeps the three kinds of knowledge apart. A grep is the check the
+    # node asks for, because the failure is visual: the glyph for "nobody knows" must
+    # never be the glyph for "fine".
+    ( cd "$RCDIR" && "$FFPACK" checklist ) > "$RCDIR/report.txt" 2>/dev/null
+    grep -q '^\[?\] human-review' "$RCDIR/report.txt" \
+        && ok "checklist: an attested leg renders awaiting a human" || bad "checklist: attested glyph"
+    grep -c '^\[x\].*attested' "$RCDIR/report.txt" | grep -qx 0 \
+        && ok "checklist: no attested item renders as checked" || bad "checklist: attested rendered checked"
+    grep -q 'awaiting a human' "$RCDIR/report.txt" \
+        && ok "checklist: the summary names what nobody has established" || bad "checklist: summary"
+    rm -rf "$RCDIR"
 else
     echo "  (pack binary absent; skipped)"
 fi
