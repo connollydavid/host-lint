@@ -82,15 +82,25 @@ pub struct Section {
     pub source: &'static str,
     pub title: &'static str,
     pub sha256: &'static str,
-    /// States rules. Detected by `@subheading` OR two or more normative statements
-    /// (must / should / shall / do not / never) in the body.
+    /// States rules. Detected by `@subheading`, or by two or more normative
+    /// statements in the section's PROSE — code blocks excluded.
     ///
-    /// The first version of this keyed on `@subheading` alone and was wrong about
-    /// eleven sections, "Naming conventions" among them, which states ten normative
-    /// rules in prose and an `@itemize` and carries no subheading at all. The
-    /// registry then claimed completeness over five sections while fifteen stated
-    /// rules, and the completeness test passed. A discovery heuristic narrower than
-    /// the thing it discovers is worse than none, because it produces a green.
+    /// This took three passes, and each failure produced a false green rather than a
+    /// visible error, which is why the history is written down here.
+    ///
+    /// 1. `@subheading` alone found 5 sections. It missed "Naming conventions",
+    ///    which states ten rules in prose and an `@itemize` with no subheading at
+    ///    all. Eleven sections were invisible and the completeness test passed.
+    /// 2. Adding must/should/shall/do-not/never found 15. It missed "Code formatting
+    ///    conventions", whose rule reads "The TAB character is FORBIDDEN outside of
+    ///    Makefiles as is any form of trailing whitespace. Commits containing either
+    ///    will be REJECTED" — normative in vocabulary this checker did not have.
+    /// 3. Adding forbidden/rejected/required/prohibited found 19, one of them the
+    ///    Vim recipe, whose "forbidden" sits inside a config-file comment in an
+    ///    `@example` block. Excluding code blocks leaves 18, all genuine.
+    ///
+    /// The general shape: a discovery heuristic narrower than the thing it discovers
+    /// reports completeness over what it happened to see.
     pub rule_bearing: bool,
 }
 
@@ -124,7 +134,7 @@ pub const SECTIONS: &[Section] = &[
     Section { source: "doc/developer.texi", title: "Language", sha256: "c72d2f2973ff3b7e54b76732a8f663a21959b29b05425542a54665195311fb3d", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "SIMD/DSP", sha256: "33fb4c409ac0f78bb2d4c45a5839b3542bf2be861dbe7445f85d3c7bf0eae3f4", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Other languages", sha256: "8e3b20619d8af73fd344f707451820cfa5ac37336514ffa1997a4d0b852d733b", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Code formatting conventions", sha256: "9842e28dc568a6a5145160c4fac9c968f205782cc269504830bbf9093436dc4b", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Code formatting conventions", sha256: "9842e28dc568a6a5145160c4fac9c968f205782cc269504830bbf9093436dc4b", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Examples", sha256: "24347c31ec9c4eb18c80feb92790784d1f07f2d752cf927256705d6ce880807d", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Vim configuration", sha256: "d3630f81d24c6a5bf2cda21a91a7590f5243b4b271ff475b8bc8482ad34a68f9", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Emacs configuration", sha256: "19a7ed022f8118e74d0a1392d9d18360136ef7e2435946101379807fe9d65fca", rule_bearing: false },
@@ -138,12 +148,12 @@ pub const SECTIONS: &[Section] = &[
     Section { source: "doc/developer.texi", title: "Library public interfaces", sha256: "1d9ca664716d471ac943a516b69ee4792b22527565be8a6ca6974a57ab9fd4ca", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Adding new interfaces", sha256: "dc2425bdee62543d65a4339a2e4d427800fb07a3705419f2cf25a36b8a3aa05a", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Removing interfaces", sha256: "679712e49f1f997a71cd03de58c512525ab3d3652138a8a150793de3f8a444cd", rule_bearing: true },
-    Section { source: "doc/developer.texi", title: "Major version bumps", sha256: "cc1f0821a4379c4b5dd5618a5d70896a50817237fb35be8a5859cdd35aa8aa08", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Major version bumps", sha256: "cc1f0821a4379c4b5dd5618a5d70896a50817237fb35be8a5859cdd35aa8aa08", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Documentation/Other", sha256: "cab3fc613c90f4e0e15c82d8e5b16111ad561597d52920888dba59ab8c6b6b70", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Submitting patches", sha256: "fa6c9023f38c1a5e4b3947f56f4b7b7fe841d09df955a7b6ca01c325f4caa34f", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "New codecs or formats checklist", sha256: "0ceed207797567b9cffa34bb34ac06e200b16c4366f7f79cb0ba5998f996135c", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Patch submission checklist", sha256: "7b7a97f3c047254014b1eb8d96dd66ad515749134925e86336207ad69d47318d", rule_bearing: true },
-    Section { source: "doc/developer.texi", title: "Patch review process", sha256: "dd46ba3ca97d3b5e63707e2ef13ca02670ce718b13724dbf2b3ff54e2972f49e", rule_bearing: false },
+    Section { source: "doc/developer.texi", title: "Patch review process", sha256: "dd46ba3ca97d3b5e63707e2ef13ca02670ce718b13724dbf2b3ff54e2972f49e", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Regression tests", sha256: "c181c869988bba4597b6e520edbf6ca736f0fd64c32a75b04a4e42842fab750f", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Adding files to the fate-suite dataset", sha256: "6b78ca24ae5c8294310cba3076e16b43b7442d65cced182986c6ddef38632644", rule_bearing: false },
     Section { source: "doc/developer.texi", title: "Visualizing Test Coverage", sha256: "6a00170dfbf143f1d5829bb016aaeb8508d16e1756a8906b88492550eba500a1", rule_bearing: false },
@@ -295,7 +305,50 @@ pub const RULES: &[Rule] = &[
     Rule { id: "regression-tests-run", section: "Regression tests", subheading: "(prose)",
            tier: Tier::Attested, lane: Lane::Build, measured_rate: None,
            summary: "Before submitting, the author tests that nothing broke, and updates reference results where a change legitimately alters them" },
+    // --- Code formatting conventions. Upstream states these as forbidden and says
+    //     commits carrying either are rejected, which is what makes the two
+    //     whitespace rules mechanical rather than a preference. ---
+    Rule { id: "diff-trailing-whitespace", section: "Code formatting conventions", subheading: "(prose)",
+           tier: Tier::Mechanical, lane: Lane::Diff, measured_rate: Some(1.000),
+           summary: "Trailing whitespace in any form is forbidden; upstream states that commits containing it are rejected" },
+    Rule { id: "diff-tab-indent", section: "Code formatting conventions", subheading: "(prose)",
+           tier: Tier::Mechanical, lane: Lane::Diff, measured_rate: Some(1.000),
+           summary: "The TAB character is forbidden outside Makefiles; upstream states that commits containing it are rejected" },
+    Rule { id: "format-indent-four", section: "Code formatting conventions", subheading: "(prose)",
+           tier: Tier::Heuristic, lane: Lane::Diff, measured_rate: None,
+           summary: "Indent size is four, in the K&R presentation of `indent -i4 -kr -nut`" },
+    Rule { id: "format-line-length", section: "Code formatting conventions", subheading: "(prose)",
+           tier: Tier::Heuristic, lane: Lane::Diff, measured_rate: None,
+           summary: "Lines are limited to 80 characters, but only where that improves readability, which upstream states as the condition" },
+
+    // --- Major version bumps, Patch review process ---
+    Rule { id: "api-major-bump-scope", section: "Major version bumps", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "Backward-incompatible changes during a major bump are limited, to reduce the work forced on callers" },
+    Rule { id: "review-process-followed", section: "Patch review process", subheading: "(prose)",
+           tier: Tier::Attested, lane: Lane::Series, measured_rate: None,
+           summary: "The review process is followed; upstream states plainly that patches skipping it are rejected" },
 ];
+
+/// Rules the pack enforces that upstream does NOT document.
+///
+/// They exist because a consuming project asks for them, and keeping them apart from
+/// `RULES` is the whole point: `RULES` is upstream's corpus, and mixing a project's
+/// preference into it would let this pack put its own opinions behind FFmpeg's
+/// authority. Every one of these is off by default or explicitly requested.
+pub const PROJECT_RULES: &[(&str, &str)] = &[
+    ("commit-msg-signoff", "FFmpeg requires no sign-off; a project may"),
+    ("commit-msg-ascii", "no upstream rule covers subject encoding; measured at zero non-ascii in 500 accepted subjects"),
+    ("diff-ascii-code", "no upstream rule covers source encoding; comments and names legitimately carry non-ascii"),
+    ("diff-narrow-scope", "a reviewer preference expressed in review, not documented"),
+    ("diff-avoption-self-describing", "named by a reviewer, not by upstream documentation"),
+    ("forge-title-grammar", "code.ffmpeg.org relays the title as the list subject; the forge is not upstream doctrine"),
+    ("forge-versioned-title", "forge revision discipline reuses one pull request; a mail-series version does not apply"),
+    ("forge-draft", "the WIP marker is a forge convention"),
+    ("forge-description-cover", "the description serves as a cover letter on the forge only"),
+    ("forge-rationale-in-commits", "a forge description never enters git history; upstream documents no forge"),
+];
+
 
 /// Every rule-bearing section, with the rules mapped to it. The completeness test
 /// asserts this leaves nothing unmapped, which is what stops the corpus drifting
@@ -400,6 +453,18 @@ pub fn sha256_hex(data: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// Every rule id the lanes can emit. Kept beside the registry so the consistency test
+    /// below has something to check against, and so adding a lane finding forces a
+    /// decision about whether it is upstream's rule or the project's.
+    const EMITTED_IDS: &[&str] = &[
+        "commit-msg-format", "commit-msg-has-body", "commit-msg-ascii", "commit-msg-signoff",
+        "commit-msg-cites-tracker", "diff-trailing-whitespace", "diff-tab-indent",
+        "diff-ascii-code", "diff-avoption-self-describing", "diff-narrow-scope",
+        "naming-namespace-prefix", "cosmetic-separate", "forge-title-grammar",
+        "forge-versioned-title", "forge-draft", "forge-description-cover",
+        "forge-rationale-in-commits",
+    ];
+
     /// The completeness rule this registry exists for: upstream adding a
     /// rule-bearing section must redden a test rather than be silently absent. A
     /// hand-maintained checklist always drifts; this is what stops it.
@@ -465,6 +530,30 @@ mod tests {
                 r.id,
                 r.measured_rate
             );
+        }
+    }
+
+    /// Every id a lane can emit is either upstream's rule or a declared project
+    /// convention. Without this, a lane could quietly enforce this pack's opinion
+    /// under FFmpeg's authority, which is the one thing the registry exists to stop.
+    #[test]
+    fn every_emitted_id_is_upstream_or_declared_project() {
+        for id in EMITTED_IDS {
+            let in_registry = RULES.iter().any(|r| r.id == *id);
+            let in_project = PROJECT_RULES.iter().any(|(p, _)| p == id);
+            assert!(
+                in_registry ^ in_project,
+                "{id} must be exactly one of an upstream rule or a declared project convention (registry: {in_registry}, project: {in_project})"
+            );
+        }
+    }
+
+    /// A project convention must carry its reason, because the reason is what stops
+    /// the list becoming a place to park rules nobody wanted to justify.
+    #[test]
+    fn every_project_rule_states_why_it_is_not_upstreams() {
+        for (id, why) in PROJECT_RULES {
+            assert!(why.len() > 20, "{id} carries no real reason: {why:?}");
         }
     }
 

@@ -1,6 +1,7 @@
 mod config;
 mod cosmetic;
 mod diff;
+mod forge;
 mod msg;
 mod rules;
 mod sha256;
@@ -39,6 +40,43 @@ fn refuse_engine_skew() {
 /// is the core's own verdict split so a hook can treat both the same way.
 /// `config` shows what the pack resolved and where from, so a surprising mode can be
 /// traced to the file that set it rather than guessed at.
+/// The forge lane: `forge --title <t> [--body <b>] [--draft]`.
+fn run_forge(args: &[String]) -> ! {
+    let val = |flag: &str| -> Option<String> {
+        args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1).cloned())
+    };
+    let Some(title) = val("--title") else {
+        eprintln!("usage: host-lint pack ffmpeg forge --title <title> [--body <body>] [--draft]");
+        process::exit(2);
+    };
+    let body = val("--body").unwrap_or_default();
+    let pr = forge::Pr { title: &title, body: &body, draft: args.iter().any(|a| a == "--draft") };
+
+    let mode = config::load(std::path::Path::new("."))
+        .map(|c| c.mode)
+        .unwrap_or(config::Mode::Advise);
+    let mut findings = forge::check(&pr);
+    if let Some(f) = forge::rationale_lands_in_commits(&pr, &[]) {
+        findings.push(f);
+    }
+    if findings.is_empty() {
+        println!("forge: the pull request metadata satisfies the lane");
+        process::exit(0);
+    }
+    let mut blocking = false;
+    for f in &findings {
+        let label = match f.tier {
+            rules::Tier::Mechanical => {
+                blocking = true;
+                "flag"
+            }
+            _ => "warn",
+        };
+        println!("{label}: {} — {}", f.rule, f.detail);
+    }
+    process::exit(verdict(blocking, mode));
+}
+
 fn run_config(args: &[String]) -> ! {
     let dir = args
         .iter()
@@ -377,6 +415,11 @@ fn run_rules(args: &[String]) -> ! {
         println!("    {} / {}", r.section, r.subheading);
     }
     println!();
+    println!("Project conventions, which upstream does NOT document:");
+    for (id, why) in rules::PROJECT_RULES {
+        println!("  {id:<32} {why}");
+    }
+    println!();
     println!(
         "-- {} rule(s) over {} rule-bearing section(s); {} carry a measured rate (CALIBRATION.md)",
         rules::RULES.len(),
@@ -413,6 +456,7 @@ fn main() {
         Some("diff") => run_diff(&args[1..]),
         Some("config") => run_config(&args[1..]),
         Some("branch") => run_branch(&args[1..]),
+        Some("forge") => run_forge(&args[1..]),
         _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,
