@@ -141,7 +141,7 @@ dependencies = [
 
 [[package]]
 name = "host-lint"
-version = "0.16.5"
+version = "0.16.6"
 dependencies = [
  "host-grammar",
  "proptest",
