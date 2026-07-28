@@ -590,7 +590,10 @@ echo ""
 echo "--- ffmpeg rules registry ---"
 
 FFPACK=$(dirname "$BINARY_ABS")/host-lint-ffmpeg
-if [ -x "$FFPACK" ]; then
+# -f as well as -x: a directory is executable, and in the CI job that downloads the
+# core binary to the repo root this path resolves to the crate DIRECTORY
+# host-lint-ffmpeg/, which $FFPACK then tried to run (exit 126).
+if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
     out=$("$FFPACK" rules 2>&1); rc=$?
     [ "$rc" -eq 0 ] && ok "rules: listing exits 0" || bad "rules: listing exit (rc=$rc)"
     echo "$out" | grep -q 'commit-msg-format' && ok "rules: the commit-message rule is listed" || bad "rules: listing content"
