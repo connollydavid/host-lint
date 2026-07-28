@@ -1,0 +1,500 @@
+.forgejo/actions/rebase-pr: workaround stale `forge.event.pull_request.merge_base` value
+Add FATE tests for stale metadata during re-encoding.
+Add new mode to mpdecimate video filter
+Changelog: add APV Vulkan encoder to the changelog
+Changelog: add new AAC encoder improvements to the changelog
+Changelog: move iTerm2 muxer entry from 9.0 to <next>
+Guard against int overflow when discarding samples
+Guard against loop underflow
+Guard lpc methods in flacdsp and add tests
+Makefile, ffbuild/{common,library}: Allow to build DEVTOOLS
+Makefile: hide verbose command from linking step
+Makefile: skip STRIP step when stripping is disabled
+Reapply "avfilter/avfiltergraph: always retry format negotiation after auto-filters"
+Revert "avfilter/avfiltergraph: always retry format negotiation after auto-filters"
+Revert "avformat/concatdec: Check recursion depth"
+Revert "fate: disable tests that depend on premultipled conversion"
+Revert "lavfi: do not send premultiplied alpha to filters not ready for it"
+Revert "tests/checkasm/vp9dsp: Allow to run only a subset of tests"
+aaccoder: add NMR-based coder
+aacenc: add an info log to ask users to resample
+aacenc: at 192kbps per channel, code the full spectrum
+aacenc: reduce automatic cutoffs at high rates by 2Khz
+aacenc: report coding tool stats at uninit
+aacenc: use the NMR coder by default
+aacenc_tns: reengineer coefficient derivation
+aacenc_tns: tighten TNS toggle for short frames
+aacpsy: pre-echo-aware short-block detection for isolated onsets
+aarch64/h26x: give step macros distinct names per function
+aarch64/h26x: move step macros before their functions
+aarch64/h26x: parameterize calc_all step macro name
+all: Don't discard const through {mem,str,strr}chr
+apv_decode: call ff_thread_finish_setup()
+apv_encode_vulkan: read the gathered bitstream back with the copy engine
+arm: Avoid warnings about redefining HWCAP constants
+avcodec/aaccoder: widen PNS candidacy to near-masked bands
+avcodec/aacenc: export discard padding side data when needed
+avcodec/aacenc: rework NMR rate control, pool CPE budgets, add decision memory
+avcodec/aacenc: rework NMR stereo decisions, retune coded bandwidth
+avcodec/aacenc_tns: enable short-block TNS via pooled per-group filters
+avcodec/aacpsy: fix the attack lookback
+avcodec/aacpsy: sync block switching across channel pairs
+avcodec/ac3enc: drain the buffered samples at the end of encoding
+avcodec/adx: sync decoder channel state on NEW_EXTRADATA
+avcodec/apac: Check bitstream_size to avoid integer overflow
+avcodec/audio_frame_queue: add skip samples side data to output packets
+avcodec/audio_frame_queue: take into account padding in input frames
+avcodec/av1: Ensure that private HW data is freed early for pictures.
+avcodec/bsf/dts2pts: chain same-gop nodes instead of collecting into a fixed array
+avcodec/bsf/dts2pts: evict unconsumable nodes from the poc tree
+avcodec/bsf/dts2pts: fix removal of 2nd field nodes
+avcodec/bsf/source: fix packet leak on av_packet_ref failure
+avcodec/bsf: add an LCEVC stream merging bsf
+avcodec/bsf: fix codec-id match loop in av_bsf_link
+avcodec/bsf: fix wrong pad index in av_bsf_link diagnostics
+avcodec/bsf: tighten loop variable scope in av_bsf_link
+avcodec/cavsdec: reject invalid start-code bitreader sizes
+avcodec/cuviddec: add CUARRAY opaque output and zero-copy support
+avcodec/d3d12va_av1: check size of frame bitstream against available buffer size
+avcodec/d3d12va_av1: check slice bitstream size against available buffer size
+avcodec/d3d12va_encode: set extradata for global header when muxing AV1 to MKV
+avcodec/d3d12va_encode_av1: add user-configurable tile support
+avcodec/d3d12va_h264: check size of frame bitstream against available buffer size
+avcodec/d3d12va_hevc: check size of frame bitstream against available buffer size
+avcodec/d3d12va_mpeg2: check size of frame bitstream against available buffer size
+avcodec/d3d12va_vc1: check size of frame bitstream against available buffer size
+avcodec/d3d12va_vp9: check size of frame bitstream against available buffer size
+avcodec/dca_core: export downmix matrix coefficients
+avcodec/dca_xll: export downmix matrix coefficients
+avcodec/exr: bound total decoded pixels by max_pixels
+avcodec/ffv1dec: Reject bayer with unaligned slice coordinates
+avcodec/ffv1dec: mask the fltmap index on the 8bit remap path
+avcodec/ffv1enc: Reject odd dimensions for bayer
+avcodec/ffv1enc_vulkan: fix format specifier for VkDeviceSize
+avcodec/get_buffer: use frame pixel format instead of context
+avcodec/h264: Ensure that private HW data is freed early for pictures.
+avcodec/hevc/ps: avoid signed overflow reading act qp offsets
+avcodec/hevc: Ensure that private HW data is freed early for pictures.
+avcodec/hevc: Fix integer overflow in WPP entry point range check
+avcodec/hevc_mp4toannexb: handle packet-side hvcC extradata
+avcodec/hevcdec: Support SMPTE-2094-50 metadata
+avcodec/jpeg2000dec: avoid signed overflow in ROI shift
+avcodec/lcevc_parser: replace fall-through comment with annotation
+avcodec/lcldec: zero the not-decoded tail to avoid heap disclosure
+avcodec/libcodec2: reject packet sample counts that overflow int
+avcodec/libfdk-aacenc: don't propagate a skip samples value higher than the frame size
+avcodec/lzf: pad the decompressed buffer
+avcodec/mace: reject sample counts that overflow int
+avcodec/mjpegdec: reject flipping of bayer images
+avcodec/mjpegdec: reject redundant scans of a sequential image
+avcodec/nvdec: add opaque CUARRAY output and zero-copy decode support
+avcodec/nvdec: don't double free the fdd-owned context on the sep_ref error path
+avcodec/nvdec: pass hw format explicitly to frame params
+avcodec/nvdec: register CUARRAY hwaccel variants for all supported codecs
+avcodec/nvenc: add CUARRAY (block-linear) input support
+avcodec/pngenc: fix overrun caused by exif size discrepancy
+avcodec/psymodel: add pair-synced window switching hook and pair state
+avcodec/rasc: Check that 32-bit DLTA accesses stay within the row
+avcodec/riscv/hevcdsp_init: decouple add_residual from RVB guard
+avcodec/screenpresso: reject deflate output shorter than the frame
+avcodec/tdsc: reject out-of-frame cursor position
+avcodec/tdsc: unref the reference frame before reallocating on size change
+avcodec/version: bump minor for recent APV Vulkan encoder and AAC encoder
+avcodec/vorbisdec: skip the MDCT for unused channels
+avcodec/vp9: Ensured that private HW data is freed early for pictures.
+avcodec/vulkan_apv: decode VLC codes branchlessly from a single window
+avcodec/vulkan_apv: replace the iDCT tile-position search with a division
+avcodec/vulkan_apv: store coefficients in a flat buffer, not the image
+avcodec/vulkan_encode_av1: fix level and tier option handling
+avcodec/vulkan_encode_av1: fix level auto-detection using zero dimensions
+avcodec/vulkan_hevc: reject too many VPS HRD parameter sets
+avcodec/vvc/dec: fix pixel buffer tab leak on chroma format change
+avcodec/vvc/dec: merge the SAO and ALF pixel buffer tab loops
+avcodec/x86/cabac: compute renormalisation shifts with lzcnt
+avcodec/x86/h264_intrapred: Deprecate MMX from all pred4x4 functions
+avcodec/x86/h264_intrapred: Deprecate MMX from pred16x16_dc_8
+avcodec/x86/h264_intrapred: Deprecate MMX from pred8x8l_down_left_8
+avcodec/x86/h264_intrapred: Deprecate MMX from pred8x8l_down_right_8
+avcodec/x86/h264_intrapred: Deprecate MMX from pred8x8l_horizontal_down_8
+avcodec/x86/h264_intrapred: Deprecate MMX from pred8x8l_vertical_left_8
+avcodec/x86/h264_intrapred: Deprecate MMX from pred8x8l_vertical_right_8
+avcodec/x86/h264_intrapred: SSE2 impl. of pred8x8_dc_rv40_8
+avcodec/x86/h264_intrapred: SSE2 impl. of pred8x8l_dc_8
+avcodec/x86/h264_intrapred: SSE2 impl. of pred8x8l_horizontal_8
+avcodec/x86/h264_intrapred: SSE2 impl. of pred8x8l_horizontal_up_8
+avcodec/x86/h264_intrapred: SSE2 impl. of pred8x8l_vertical_8
+avcodec/x86/hevc/add_res: Port ff_hevc_add_residual_4_8_mmxext to SSE2
+avcodec/x86/hevc: add SSE2 and AVX transform_4x4_luma
+avcodec/x86/me_cmp: Improve median_sad functions
+avcodec/x86/me_cmp: Reduce amount of registers used
+avcodec/x86/sbcdsp: Avoid shift
+avcodec/x86/vc1dsp_mc: Add size 16 horizontal SSSE3 mc functions
+avcodec/x86/vc1dsp_mc: Add size 16 vertical SSSE3 mc functions
+avcodec/x86/vc1dsp_mc: Add size 8 horizontal SSSE3 mc functions
+avcodec/x86/vc1dsp_mc: Add size 8 vertical SSSE3 mc functions
+avcodec/x86/vc1dsp_mc: Don't xor unnecessarily
+avcodec/x86/vc1dsp_mc: Move inverse transform into a file of its own
+avcodec/x86/vc1dsp_mc: Remove unnecessary movsxdifnidn
+avcodec/x86/vc1dsp_mmx: Remove purely horizontal MMX mc functions
+avcodec/x86/vc1dsp_mmx: Remove purely vertical MMX mc functions
+avcodec/x86/vp9lpf: Avoid inverting masks
+avcodec/x86/vp9lpf: Avoid load
+avcodec/x86/vp9lpf: Avoid reloading constant
+avcodec/x86/vp9lpf: Avoid unnecessary stores
+avcodec/x86/vp9lpf: Combine comparisons
+avcodec/x86/vp9lpf: Combine filter2 and filter4 cases
+avcodec/x86/vp9lpf: Don't do work twice
+avcodec/x86/vp9lpf: Improve deriving masks
+avcodec/x86/vp9lpf: Simplify clip_u8(u8+i8)
+avcodec: Add itut-t35 metadata as a codec type
+avcodec: Align bayer pixel formats to 2x2
+avcodec: add a graph based bitstream filtering API
+avcodec: remove unneeded vulkan_spirv.h includes
+avdevice/alsa: auto-detect channel layout when capturing audio
+avdevice/android_camera: fix OOB read in metadata parsing
+avdevice/avfoundation: wait for frame consumption to avoid dropping A/V frames
+avdevice/pulse_audio_dec: validate sample spec before use
+avfilter/af_adeclick: free transform contexts and buffers on error
+avfilter/af_aresample: also look for downmix matrix side data
+avfilter/af_ashowinfo: support printing downmix matrix side data
+avfilter/boxblur: reject pixel formats deeper than 16 bits
+avfilter/dnn: auto-initialize nireq for Torch backend
+avfilter/dnn: fix async teardown race condition in all backends
+avfilter/dnn: implement batching for Torch backend
+avfilter/dnn: use batch_size in DnnContext instead of ov_option
+avfilter/dnn_backend_torch: fix missing ret in async error path
+avfilter/hwupload_cuda: add CUARRAY output and semi-planar 444 format support
+avfilter/vf_bwdif_cuda: fix typos in algorithm
+avfilter/vf_floodfill: remove unneeded variables
+avfilter/vf_floodfill: size the point stack for the current frame
+avfilter/vf_hqdn3d: reject unsupported frame parameter changes
+avfilter/vf_hqdn3d: support dynamic frame sizes
+avfilter/vf_libplacebo: add flag to inherit the input's Vulkan device
+avfilter/vf_lut3d: compute size2 after the 3DLUTSIZE directive
+avfilter/vf_lut3d: do not compute size*size before the size is validated
+avfilter/vf_mcdeint: add fall-through annotations
+avfilter/vf_quirc: Changed character specifier
+avfilter/vf_quirc: resize the quirc buffers when the input size changes
+avfilter/vf_removelogo: free the whole mask on allocation failure
+avfilter/vf_scale_cuda: fix non-scaling format conversion
+avfilter/vf_swaprect: size the temp row buffer for the widest plane
+avfilter/vf_v360: keep remap source coordinates in bounds
+avfilter/vf_v360: reject dimensions too small for the projection
+avfilter/vf_vqe_amf: Add AMF Video Quality Enhancer filter
+avfilter/vf_yadif_cuda: fix typos in algorithm
+avfilter/vsrc_gfxcapture_winrt: add missing system_error include
+avfilter: add latticepal filter
+avfilter: add less confusing error on frame queue overflow
+avformat/avio: propagate prefer_libcurl preference from parent URLContext
+avformat/avio: re-use av_opt_set() to parse prefer_libcurl
+avformat/aviobuf: add prefer_libcurl to ffurl_copy_url_options()
+avformat/concatdec: Check recursion depth
+avformat/dashdec: check NULL pointer before use str_end_offset
+avformat/dashdec: check NULL pointer of av_strtok value before use it
+avformat/dashdec: check fragment_timescale before division in refresh_manifest
+avformat/dashdec: fix integer truncation in calc_max_seg_no()
+avformat/hevc: use correct format specifier
+avformat/hls: Enforce protocol checks when opening child playlists
+avformat/hls: check if http protocol is native or not
+avformat/hls: reject Master Playlist tags in a Media Playlist
+avformat/hls_sample_encryption: Validate ADTS frame length against packet
+avformat/hlsenc: Fix heap buffer overflow in parse_playlist()
+avformat/hlsenc: Handle extensionless URIs in extract_segment_number()
+avformat/http: imply keep-alive by default when beneficial
+avformat/http: make reconnection message less misleading
+avformat/http: move ff_http_averror() to header
+avformat/http: organize HTTP context fields into sections (cosmetic)
+avformat/http: split request size determination to separate function
+avformat/http: use explicit AVERROR_ names for fixed error codes
+avformat/iamf_parse: check count_label against the available bytes
+avformat/iff: reject invalid data_size in ANIM
+avformat/imfdec: check for a missing or empty Path in the asset map
+avformat/imfdec: reject virtual tracks with no resources
+avformat/internal: fix typo allow_unkown -> allow_unknown
+avformat/jvdec: add fall-through annotations
+avformat/lcevc: add a log context parameter to all functions
+avformat/libcurl: add libcurl protocol skeleton
+avformat/libcurl: add options, TLS, proxy, cookies and headers
+avformat/libcurl: add seek, size and retry
+avformat/libcurl: also allow forcing streams to be seekable
+avformat/libcurl: attach a CURLSH shared handle to all requests
+avformat/libcurl: avoid TOCTOU in libcurl_seek()
+avformat/libcurl: avoid integer overflow in connect_timeout
+avformat/libcurl: clear the pause flag when unpausing
+avformat/libcurl: early exit on no-op seek
+avformat/libcurl: enable cookie engine unconditionally
+avformat/libcurl: fix AVBPrint leak on setup_protocols() error paths
+avformat/libcurl: fix comments
+avformat/libcurl: fully parse Content-Range header
+avformat/libcurl: guard against integer overflow on start_request()
+avformat/libcurl: guard against overflow from over-reading data
+avformat/libcurl: guard against overflow on seek()
+avformat/libcurl: guard against unexpected reply content-range
+avformat/libcurl: harden against malicious underflow
+avformat/libcurl: implement -initial_request_size
+avformat/libcurl: implement event loop and read path
+avformat/libcurl: improve content size tracking
+avformat/libcurl: keep the seekable user override across replies
+avformat/libcurl: keep track of owning AVFormatContext
+avformat/libcurl: limit buffer_size to INT_MAX
+avformat/libcurl: only offer compression for full unbounded requests
+avformat/libcurl: respect format whitelist
+avformat/libcurl: set minimum buffer size to curl write size
+avformat/libcurl: simplify continuation decision logic
+avformat/libcurl: track and report connection/request statistics
+avformat/libcurl: use int64_t consistently
+avformat/libcurl: validate that the server honored a requested start offset
+avformat/matroska: rescale default duration derived block durations to stream timebase
+avformat/mods: bail out on av_get_packet() failure
+avformat/mods: fix keyframe flagging in read_packet
+avformat/mov: Add itut-t35 data codec support
+avformat/mov: avoid overflow/negative discard sample duration
+avformat/mov: bound the iref thmb/cdsc entry count by the sub-box size
+avformat/mov: check current_dts for overflow
+avformat/mov: fix error log for cdsc track references
+avformat/mov: parse cdsc track references
+avformat/mov: read DTS metadata from ddts box
+avformat/movenc: drain buffered EAC3 packets
+avformat/movenc: free sgpd_entries on the roll-distance error path
+avformat/movenc: preserve packet side data when merging eac3 packets
+avformat/movenc: read packet duration at the time it's needed
+avformat/movenc: unify remainder samples signaling
+avformat/movenc: use frame_size for EAC3 when merging packets
+avformat/mvrdec: add MVR CCTV demuxer
+avformat/network: make ff_network_init() follow standard AVERROR convention
+avformat/nuv: add fall-through annotations
+avformat/rtpdec_asf: reject ASF objects smaller than their header
+avformat/shared: add -retry_corrupt option
+avformat/shared: give up on cache file after too many corrupt blocks
+avformat/shared: hash cache version into filename
+avformat/shared: increase CRC size to 32-bits
+avformat/shared: treat unexpected EOF as corruption
+avformat/shared: use strong CAS for marking PENDING
+avformat/spdif: fix reading past the buffer when probing AAC in IEC 61937
+avformat/spdifenc: bound DTS core_size against the packet size in the HD path
+avformat/spdifenc: preserve TrueHD MAT padding across branches
+avformat/tls: remove orphan ff_openssl_init/ff_openssl_deinit declarations
+avformat/tls_mbedtls: check the certificate verification result in tls_handshake()
+avformat/ty: don't let the Series2 AC3 trim underflow the packet size
+avformat/utils: fix ff_mkdir_p() swallowing intermediate mkdir errors
+avformat/vobsub: reuse subtitle streams and bound the stream count
+avformat/wavdec: fix integer overflow in W64 chunk size check
+avformat/wavdec: limit memory allocated for BEXT coding history data
+avformat/wavdec: move ID3v2 auto-parsing flag from w64 to wav
+avformat/wavenc: Don't count padding in rf64 data chunk size
+avformat/whip: disable DTLS certificate verification
+avformat: Add recursion limit
+avformat: add iTerm2 inline image protocol muxer
+avformat: add parent AVFormatContext to URLContext
+avformat: add prefer_libcurl option to route http(s) via libcurl
+avutil/bprint: fix pointer signedness in return value for av_bprint_get_buffer()
+avutil/crc: add aarch64 hybrid crc32 NEON PMULL+EOR SIMD implementation
+avutil/downmix_info: add a new API to propagate pre-made downmix matrixes
+avutil/frame: add a new side data type for downmix matrix
+avutil/hwcontext_cuda: add CUarray surface pool support
+avutil/hwcontext_cuda: drain queued copies on transfer error
+avutil/hwcontext_cuda: fail derive if no CUDA device matches
+avutil/hwcontext_cuda: fix build with old cuda headers
+avutil/hwcontext_cuda: fix unused variable 'i' warning
+avutil/hwcontext_cuda: fix yuv420p V/U plane overlap in cuda_get_buffer()
+avutil/hwcontext_cuda: remove format allowlist, accept any pixel format
+avutil/hwcontext_vulkan: CUDA interop semaphores are per image
+avutil/hwcontext_vulkan: declare cuda as a transfer-compatible format
+avutil/hwcontext_vulkan: fix CUDA interop for packed formats
+avutil/hwcontext_vulkan: query the actual image format in try_export_flags
+avutil/hwcontext_vulkan: reject unsupported semi-planar CUDA imports
+avutil/pixfmt: add AV_PIX_FMT_CUARRAY for opaque CUDA block-linear surfaces
+avutil/x86/asm: Remove HAVE_[67]REGS, use HAVE_X86_[67]REGS directly
+av{codec,filter}/x86: Remove unnecessary asm.h inclusions
+cbs_apv: relax minimum tile-sizes
+checkasm/crc: increase size of input buffer from 8k to 16k
+checkasm/sw_rgb: also test yuyvtoyuv422
+checkasm/sw_rgb: fix too small source stride in uyvytoyuv422 test
+checkasm/sw_rgb: test uyvytoyuv422 with odd widths
+checkasm: sw_ops: Fix building with older versions of Clang
+configure/x86: test 6- and 7-register inline asm
+configure: Add a dependency on user32 to the gfxcapture filter
+configure: Pass the .objs response file to makedef
+configure: Remove unused check_exec_crash
+configure: Test for response file support in a way that works with busybox-w32
+configure: add manual check for openvino v2
+configure: gate CUARRAY support on ffnvcodec capabilities
+configure: remove libshaderc and libglslang support
+doc/developer.texi: update reviews section
+doc/infra.txt: add fairy
+doc/muxers: document undocumented segment muxer options
+fate/filter-video: add photosensitivity blend test
+fate/mov: Add fate test for t35 cdsc track
+fate: disable tests that depend on premultipled conversion
+fate: update AAC encoder tests
+ffbuild/common.mak: ensure target directories are created before running shell redirects into them
+ffbuild/common.mak: fix source path prefix stripping in INSTALL output
+fftools/ffmpeg: disable stdin interaction when fd 0 is closed
+fftools/ffmpeg: remove extra \n
+fftools/ffmpeg_dec: improve hwaccel format negotiation for CUARRAY
+fftools/ffmpeg_demux: free stream group reference array in DemuxStream
+fftools/ffmpeg_demux: merge LCEVC enhancement payloads into the base stream
+fftools/ffmpeg_demux: only throttle readrate on the slowest stream
+fftools/ffmpeg_demux: remove unused variable
+fftools/ffmpeg_demux: skip finished/unstarted streams in readrate_sleep()
+fftools/ffmpeg_filter: propagate downmix matrix side data to the filterchain
+fftools/ffmpeg_mux_init.c: Add comment-* version of the filtered iTunes
+fftools/ffmpeg_mux_init.c: delete encoder-specific metadata when re-encoding.
+fftools/ffmpeg_sched: do not print error code
+fftools/ffplay: remove SDL_AUDIO_ALSA_SET_BUFFER_SIZE
+fftools/opt_common: fix format string bug in print_program_info
+fftools: fix manual merge missing changes
+fftools: reject negative -t durations
+ffv1enc_vulkan: fix VRAM size detection
+ffv1enc_vulkan: gather into VRAM and then copy, drop the host-only path
+ffv1enc_vulkan: gather slices on the GPU, drop the transfer copy
+forgejo/workflows: add workflow for automatic backport PRs via labels
+forgejo/workflows: block concurrent backport runs for the same pull request
+forgejo/workflows: fix backport condition compatibility
+forgejo/workflows: rebase PR commits onto target branch before running verification
+hwcontext_vaapi: fix undefined close() on windows
+lavc/apv_encode_vulkan: add a Vulkan APV encoder
+lavc/hevc: Always generate missing refs for foll pictures
+lavc/hevcdec: decode runs of bypass bins with one integer division
+lavc/hevcdec: precompute the significance context tables per scan
+lavc/hevcdec: remove data dependent branches from residual decoding
+lavc/hevcdec: skip the coefficient clear for DC-only blocks
+lavc/mediacodecdec: rename MediaCodecH264DecContext to MediaCodecContext
+lavf/oggparsevorbis: rework timestamp offset and end trimming
+lavfi/vf_format: factor parsing the lists
+lavfi/vf_format: report error for invalid names
+lavfi: cosmetic: rename variable
+lavfi: do not send premultiplied alpha to filters not ready for it
+lavu: monotonic av_gettime_relative for msvc
+libavcodec/Makefile: add aaccoder_nmr.h to SKIPHEADERS
+libavcodec/mediacodecdec_common: improve logging for failing to get codec
+libavcodec/mediacodecdec_common: support AV_HWACCEL_FLAG_ALLOW_PROFILE_MISMATCH
+libavformat/id3v2.c: Factor out support for reading lyrics and comment
+libavformat/id3v2: deprecate legacy COMM descriptor-as-key behavior
+libavformat/id3v2enc.c: add write support for COMM/USLT descriptor+lang keys
+libavformat/img2enc: add update_filemtime option
+libavutil/vulkan: fix elem_size computation in vulkan_export_to_cuda
+rvv: add optimized h264 intra prediction functions
+swresample/rematrix: print custom downmix matrix coefficients
+swscale/Makefile: Mark sws_ops* test tools as requiring CONFIG_UNSTABLE
+swscale/aarch64/ops: consistently use SWS_COMP() to test and set mask values
+swscale/aarch64/ops: convert swizzle operation to a series of moves
+swscale/aarch64/ops: fix SWS_OP_CLEAR parameter extraction
+swscale/aarch64/ops: move SwsOpExec/SwsOpImpl offset value checks to ops.c
+swscale/aarch64/ops: perform pass splitting while generating ops_entries.c
+swscale/aarch64/ops: remove overly-complicated field-specific functions
+swscale/aarch64/ops: remove overly-complicated generated lookup function
+swscale/aarch64/ops: remove struct SwsAArch64BackendContext and aarch64_optimize() stubs
+swscale/aarch64/ops: specialize clear operation
+swscale/aarch64/ops: specialize convert and expand operations
+swscale/aarch64/ops: specialize linear operation
+swscale/aarch64/ops: use SwsClearUOp for SwsAArch64OpImplParams.clear
+swscale/aarch64/ops: use SwsCompMask for SwsAArch64OpImplParams.mask
+swscale/aarch64/ops: use SwsDitherUOp for SwsAArch64OpImplParams.dither
+swscale/aarch64/ops: use SwsLinearUOp for SwsAArch64OpImplParams.linear
+swscale/aarch64/ops: use SwsMoveUOp for SwsAArch64OpImplParams.move
+swscale/aarch64/ops: use SwsPackUOp for SwsAArch64OpImplParams.pack
+swscale/aarch64/ops: use SwsShiftUOp for SwsAArch64OpImplParams.shift
+swscale/aarch64/ops: use SwsUOpParams for SwsAArch64OpImplParams's parameter fields
+swscale/aarch64/ops: use SwsUOpType/SwsPixelType instead of SwsAArch64OpType/SwsAArch64PixelType
+swscale/aarch64/ops_asmgen: add IMPL_PRIV helper for offset operand
+swscale/aarch64/ops_asmgen: increase the number of temp vectors to 12
+swscale/aarch64/ops_asmgen: load values from exec before performing setup
+swscale/aarch64/ops_asmgen: move save_mask setup out of asmgen_op_linear() and into asmgen_setup_linear()
+swscale/aarch64/ops_asmgen: pass SwsAArch64OpRegs as a separate argument to asmgen_op_*()
+swscale/aarch64/ops_asmgen: pass both input and output masks to asmgen_process()
+swscale/aarch64/ops_asmgen: populate operands matrix in asmgen_setup_linear()
+swscale/aarch64/ops_asmgen: reword annotations for linear operation
+swscale/aarch64/ops_asmgen: setup frame for each function
+swscale/aarch64/ops_asmgen: split asmgen_setup_*() out of asmgen_op_*()
+swscale/aarch64/ops_asmgen: split constant vector registers out of temp
+swscale/aarch64/ops_asmgen: split cps code out of asmgen_process()
+swscale/aarch64/ops_asmgen: split input/output vector banks into separate register variables
+swscale/aarch64/ops_asmgen: split reshape_all_vectors() into vector register classes
+swscale/aarch64/ops_asmgen: split vector init from reshaping
+swscale/aarch64/ops_asmgen: use RasmOp directly when generating masks for SWS_UOP_UNPACK
+swscale/aarch64/ops_asmgen: use and/orr arrangement specifier helpers from rasm
+swscale/aarch64/ops_asmgen: use arrangement specifiers for vector registers with known size
+swscale/aarch64/ops_asmgen: use different value for vtmp register index
+swscale/aarch64/ops_asmgen: use more (but simpler) loops for exec load generation
+swscale/aarch64/rasm: add extra helpers for instructions that take all 16b operands
+swscale/aarch64/rasm: fill AArch64VecViews by value
+swscale/aarch64/rasm: use AVBPrint instead of custom string functions
+swscale/aarch64: split ops_static.c out of ops_asmgen.c
+swscale/format: Build ff_sws_chroma_pos() even without CONFIG_UNSTABLE
+swscale/graph: Remove ff_sws_graph_create()
+swscale/jit: implement ff_sws_jit_protect() for win32
+swscale/jit: move jit-related code to its own file
+swscale/ops: Move stuff for enumerating op lists out
+swscale/ops_chain: Disable ff_sws_setup_{clear,clamp,scale}
+swscale/ops_dispatch: add SwsOpBackend.compile_uops()
+swscale/ops_dispatch: fix use-after-free when adding opaque ops passes
+swscale/ops_dispatch: remove outdated comment
+swscale/ops_optimizer: add ff_sws_uop_list_optimize() placeholder
+swscale/ops_optimizer: remove now-unused ff_sws_solve_shuffle()
+swscale/output: avoid signed overflow in yuv2rgb_write_full luma scaling
+swscale/rational64: remove unused av_gcd_q64 declaration
+swscale/tests/sws_ops: rewrite to test uops directly
+swscale/tests/sws_ops_aarch64: pretty-print entries in ops_entries.c
+swscale/tests/sws_ops_aarch64: use AVBPrint instead of custom string functions
+swscale/uops: Move stuff for generating uops_macros.h out
+swscale/uops: add SWS_UOP_FLAG_PSHUFB
+swscale/uops: add SWS_UOP_RW_SHUFFLE
+swscale/uops: add extra convenience metadata for the backends
+swscale/uops: add ff_sws_shuffle_mask() helper
+swscale/uops: add ff_sws_uop_list_remove_at()
+swscale/uops: consolidate SWS_UOP_{PERMUTE,COPY,MOVE}
+swscale/uops: generate more specific masks for unpack when translating
+swscale/uops: mark unneeded rows as zero in translate_linear_op()
+swscale/uops: move some simple functions to header file
+swscale/uops: rewrite ff_sws_solve_shuffle() in terms of uops
+swscale/uops_macros_gen: drop checkasm planar write hack
+swscale/vulkan: fix invalid SPIR-V generation for plane-remapped passes
+swscale/x86/ops: add AVX512 vpermb packed shuffle path
+swscale/x86/ops: add micro-op dump to compile_uops_x86() as well
+swscale/x86/ops: add missing non-FMA SWS_UOP_LINEAR fallback
+swscale/x86/ops: avoid direct reliance on `ops` metadata
+swscale/x86/ops: implement compile_uops()
+swscale/x86/ops: rewrite packed_shuffle() in terms of uops macro
+swscale/x86: fix SIGILL in u8 SCALE on SSE4-only CPUs
+swscale: remove GLSL backend
+tests/checkasm/aes: fix memcmp size argument
+tests/checkasm/checkasm: Map rnd to checkasm_rand_uint32
+tests/checkasm/h264pred: Avoid declare_func_emms
+tests/checkasm/hevc_pel: Don't test impossible values
+tests/checkasm/llviddsp: fix add_left_pred_int16 buffer compare size
+tests/checkasm/motion: Improve randomizing buffers
+tests/checkasm/motion: Improve reporting
+tests/checkasm/vc1dsp: Fix shadowing
+tests/checkasm/vc1dsp: Improve mspel test
+tests/fate/ac3: add a test to check correct encoder sample output
+tests/fate/ffmpeg: remove audio stream from fate-autorotate
+tests/fate/generic-tags: use ac3_fixed encoder instead of float aac
+tests/fate/generic-tags: use codec copy instead of encoding
+tests/fate/hevc: add scale filter dependency to fate-hevc-bsf-mp4toannexb-new-extradata
+tests/fate/hevc: update ref file for the newest test
+tests/fate/id3v2.mak: add test for XXX lang in COMM and USLT frames, fix
+tests/fate/libavutil: add FATE test for dovi_meta
+tests/fate/libavutil: add FATE test for mastering_display_metadata
+tests/fate/libavutil: add FATE test for video_hint
+tests/fate/matroska: add a test for Track Timescale handling
+tests/fate/ogg-vorbis.mak: add test to show packets initial padding and
+tests/fate/spdif: add TrueHD branch padding test
+tests/ref: update references
+tests: Implicitly set TAG=GEN for data/*.m3u8
+tools/target_dec_fuzzer: use av_fallthrough to avoid warning
+tools/target_enc_fuzzer: don't access removed AVCodec::pix_fmts
+tools/target_enc_fuzzer: mark flags64 as unused
+vf_libplacebo: add missing avstring.h include
+vf_photosensitivity: add blend option
+vf_photosensitivity: fix metadata when duplicating frames
+vf_photosensitivity: scale badness threshold with history size
+vf_scale_vulkan: port to compile-time SPIR-V generation
+vulkan/prores_raw: reconstruct DC values in 32-bit
+vulkan/seg_gather: avoid scratch spills and serial prefix summing
+vulkan: fix u32vec2buf/u32vec4buf alignment values
+vulkan: remove runtime shader compilation support
+vulkan_decode: drop ff_vk_decode_prepare_frame_sdr, use exec owned views
+vulkan_encode: destroy image views of queued pictures on uninit
+vulkan_encode: fix leak and swallowed errors in init_base_units()
+vulkan_encode: free CBS context, fragment and SEI buffers on close

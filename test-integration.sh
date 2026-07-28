@@ -608,6 +608,24 @@ if [ -x "$FFPACK" ]; then
 
     "$FFPACK" rules --check-freshness "$(mktemp -d)" >/dev/null 2>&1 && rc=0 || rc=$?
     [ "$rc" -eq 2 ] && ok "rules --check-freshness: a non-git tree exits 2" || bad "rules --check-freshness (rc=$rc)"
+
+    # The message lane's verdict split matches the core's, so a hook can treat both
+    # the same way: 1 blocks, 3 advises, 0 is clean, 2 is an error.
+    printf 'avcodec/h264: fix a leak\n\nwhy it leaked\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 0 ] && ok "msg: a well-formed message is clean" || bad "msg: clean (rc=$rc)"
+
+    printf 'avcodec/h264: fixed!\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 1 ] && ok "msg: a subject upstream names unacceptable blocks (rc=1)" || bad "msg: mechanical (rc=$rc)"
+
+    printf 'Add a thing with no area\n' | "$FFPACK" msg >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 3 ] && ok "msg: a missing area prefix advises rather than blocks (rc=3)" || bad "msg: heuristic (rc=$rc)"
+
+    "$FFPACK" msg /nonexistent-message >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 2 ] && ok "msg: an unreadable file exits 2" || bad "msg: unreadable (rc=$rc)"
+
+    # Sign-off and tracker are project modes, not upstream rules: silent by default.
+    printf 'avcodec/h264: fix a leak\n\nwhy\n' | "$FFPACK" msg --signoff >/dev/null 2>&1 && rc=0 || rc=$?
+    [ "$rc" -eq 1 ] && ok "msg --signoff: the project mode blocks when asked for" || bad "msg --signoff (rc=$rc)"
 else
     echo "  (pack binary absent; skipped)"
 fi

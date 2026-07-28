@@ -1,7 +1,10 @@
+mod msg;
 mod rules;
 mod sha256;
 
 use std::env;
+use std::fs;
+use std::io;
 use std::process;
 
 // The engine handshake (host-lint#23, version-handshake-fails-open): the
@@ -26,6 +29,50 @@ fn refuse_engine_skew() {
         );
         process::exit(2);
     }
+}
+
+/// The message lane: `msg [--signoff] [<file>]`, or stdin. Exits 1 on a mechanical
+/// finding, 3 on heuristic findings alone, 0 clean, 2 on a usage or IO error, which
+/// is the core's own verdict split so a hook can treat both the same way.
+fn run_msg(args: &[String]) -> ! {
+    let signoff = args.iter().any(|a| a == "--signoff");
+    let tracker = args.iter().any(|a| a == "--require-tracker");
+    let file = args.iter().find(|a| !a.starts_with("--"));
+
+    let text = match file {
+        Some(f) => match fs::read_to_string(f) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("host-lint-ffmpeg: cannot read {f}: {e}");
+                process::exit(2);
+            }
+        },
+        None => {
+            let mut s = String::new();
+            if let Err(e) = io::Read::read_to_string(&mut io::stdin(), &mut s) {
+                eprintln!("host-lint-ffmpeg: cannot read stdin: {e}");
+                process::exit(2);
+            }
+            s
+        }
+    };
+
+    let findings = msg::check_with(&text, signoff, tracker);
+    if findings.is_empty() {
+        process::exit(0);
+    }
+    let mut blocking = false;
+    for f in &findings {
+        let label = match f.tier {
+            rules::Tier::Mechanical => {
+                blocking = true;
+                "flag"
+            }
+            _ => "warn",
+        };
+        println!("{label}: {} — {}", f.rule, f.detail);
+    }
+    process::exit(if blocking { 1 } else { 3 });
 }
 
 fn run_rules(args: &[String]) -> ! {
@@ -199,8 +246,10 @@ fn json_str(s: &str) -> String {
 fn main() {
     refuse_engine_skew();
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("rules") {
-        run_rules(&args[1..]);
+    match args.first().map(String::as_str) {
+        Some("rules") => run_rules(&args[1..]),
+        Some("msg") => run_msg(&args[1..]),
+        _ => {}
     }
     // The lanes land by the build sequence on host-lint#22 (msg, commit,
     // series, mail, build, checklist, rules). Until a lane lands, every
