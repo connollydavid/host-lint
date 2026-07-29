@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 
-use host_lint::{Corpus, Match, LexiconEntry, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
+use host_lint::{Corpus, Match, LexiconEntry, LexiconScopes, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -317,7 +317,10 @@ fn run_packs_list() -> ! {
     process::exit(0);
 }
 
-fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matches: &mut Vec<Match>) {
+// The lexicon comes from the file's own scope rather than from the invocation,
+// so a vendored repository inside this one answers to its own vocabulary
+// (host-lint#26). `scopes` caches per directory, so a walk reads each LEXICON once.
+fn scan_file(path: &Path, scopes: &LexiconScopes, matches: &mut Vec<Match>) {
     if !path.is_file() {
         return;
     }
@@ -332,15 +335,23 @@ fn scan_file(path: &Path, allow: &[String], units: &[String], strict: bool, matc
         Ok(c) => c,
         Err(_) => return,
     };
-    scan_text_with_allow_strict(&content, path.to_string_lossy().as_ref(), allow, units, strict, matches);
+    let lex = scopes.for_file(path);
+    scan_text_with_allow_strict(
+        &content,
+        path.to_string_lossy().as_ref(),
+        &lex.phrases_lc,
+        &lex.units,
+        lex.strict,
+        matches,
+    );
 }
 
 /// Run the tracked-doc prose audit over `root` (host-lint's `run_docs`), extending
 /// `matches`. An I/O error walking the tree exits 2 rather than passing it silently.
 /// Shared by `--all`, `--docs`, and no-file `--prose` so one repo-wide prose audit
 /// backs all three and matches the host-lifecycle prose gate (host-lint#20).
-fn audit_tracked_docs(root: &str, allow: &[String], corpus: Corpus, matches: &mut Vec<Match>) {
-    match run_docs(Path::new(root), allow, &load_ignore(root), corpus) {
+fn audit_tracked_docs(root: &str, scopes: &LexiconScopes, corpus: Corpus, matches: &mut Vec<Match>) {
+    match run_docs(Path::new(root), scopes, &load_ignore(root), corpus) {
         Ok(scan) => {
             // A document listed and not read is not a skip. Reporting the rest as clean
             // would be a verdict over a corpus with a hole in it (agentic-host call/0048).
@@ -359,7 +370,7 @@ fn audit_tracked_docs(root: &str, allow: &[String], corpus: Corpus, matches: &mu
     }
 }
 
-fn run_all_files(root: &str, allow: &[String], units: &[String], strict: bool, ignore: &[String], matches: &mut Vec<Match>) {
+fn run_all_files(root: &str, scopes: &LexiconScopes, ignore: &[String], matches: &mut Vec<Match>) {
     if root.is_empty() {
         // No resolvable repository root: a clean exit here would be a fail-open
         // audit that scanned nothing. Fail closed.
@@ -403,7 +414,7 @@ fn run_all_files(root: &str, allow: &[String], units: &[String], strict: bool, i
         }
         // scan_file additionally skips non-files (tracked-but-deleted), CI files,
         // and unscannable extensions.
-        scan_file(&path, allow, units, strict, matches);
+        scan_file(&path, scopes, matches);
     }
 }
 
@@ -589,6 +600,10 @@ fn main() {
     } else {
         repo_root()
     };
+    // Every scope in the tree, resolved lazily from the file being scanned. The
+    // root's own lexicon still governs anything with no file behind it: a commit
+    // message, or content piped in unnamed.
+    let scopes = LexiconScopes::new(Path::new(&root));
     let lex = load_lexicon(Path::new(&root));
     let allow = lex.phrases_lc.as_slice();
     let units = lex.units.as_slice();
@@ -614,7 +629,10 @@ fn main() {
                 eprintln!("host-lint: cannot read staged content of {path} as UTF-8: {e}");
                 process::exit(2);
             }
-            scan_text_with_allow_strict(&input, path, allow, units, strict, &mut matches);
+            // The staged blob is scanned as the file it will become, so its
+            // scope is that file's, not the invocation's (host-lint#26).
+            let lex = scopes.for_file(Path::new(path));
+            scan_text_with_allow_strict(&input, path, &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
         }
     } else if stdin_flag {
         let mut input = String::new();
@@ -634,20 +652,23 @@ fn main() {
         // plus the prose lane over tracked authored docs, so one repo-wide command
         // matches the host-lifecycle naming + prose gate (host-lint#20). A `--prose`
         // passed alongside `--all` is redundant and folded in here.
-        run_all_files(&root, allow, units, strict, &load_ignore(&root), &mut matches);
-        audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
+        run_all_files(&root, &scopes, &load_ignore(&root), &mut matches);
+        audit_tracked_docs(&root, &scopes, Corpus::WorkingTree, &mut matches);
     } else if prose_flag {
         if files.is_empty() {
             // `--prose` with no files audits the tracked authored docs (the repo-wide
             // prose audit that matches the host-lifecycle prose gate, host-lint#20),
             // rather than scanning nothing and exiting clean (a fail-open) or erroring.
-            audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
+            audit_tracked_docs(&root, &scopes, Corpus::WorkingTree, &mut matches);
         } else {
             // `--prose <files>` scans exactly those files; an unreadable one is an
             // error, not a silent skip.
             for f in &files {
                 match fs::read_to_string(f) {
-                    Ok(content) => scan_prose_text(&content, f, allow, &mut matches),
+                    Ok(content) => {
+                        let lex = scopes.for_file(Path::new(f));
+                        scan_prose_text(&content, f, &lex.phrases_lc, &mut matches)
+                    }
                     Err(e) => {
                         eprintln!("host-lint: cannot read {f}: {e}");
                         process::exit(2);
@@ -656,7 +677,7 @@ fn main() {
             }
         }
     } else if docs_flag {
-        audit_tracked_docs(&root, allow, Corpus::WorkingTree, &mut matches);
+        audit_tracked_docs(&root, &scopes, Corpus::WorkingTree, &mut matches);
     } else if log_flag {
         run_log(allow, units, strict, &mut matches);
     } else if files.is_empty() {
@@ -707,7 +728,10 @@ fn main() {
             }
             match fs::read_to_string(path) {
                 Ok(content) => {
-                    scan_text_with_allow_strict(&content, f, allow, units, strict, &mut matches)
+                    {
+                        let lex = scopes.for_file(Path::new(f));
+                        scan_text_with_allow_strict(&content, f, &lex.phrases_lc, &lex.units, lex.strict, &mut matches)
+                    }
                 }
                 Err(e) => {
                     eprintln!("host-lint: cannot read {f}: {e}");

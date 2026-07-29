@@ -52,6 +52,8 @@ rule-failure.DetectBareNumeralLabel.1         => test:version_with_letter_does_n
 rule-entity-creation.DetectBareNumeralLabel.1 => test:bare_dotted_code_in_prose_warns exercises=check_warn
 rule-success.EscalateUnderStrict              => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag exercises=scan_text_with_allow_strict
 rule-failure.EscalateUnderStrict.1            => test:lexicon_strict_escalates_an_undeclared_warn_to_a_flag exercises=scan_text_with_allow_strict
+rule-success.StrictHoldsAcrossScopes          => test:an_inner_scope_cannot_relax_an_outer_escalation exercises=resolve_lexicon
+rule-failure.StrictHoldsAcrossScopes.1        => test:no_scope_declaring_strict_leaves_it_off exercises=resolve_lexicon
 rule-success.FlagSubjectDecoration            => test:subject_decoration_escalates_to_flag exercises=escalate_subject_decoration
 rule-failure.FlagSubjectDecoration.1          => test:body_decoration_stays_advisory exercises=escalate_subject_decoration
 rule-entity-creation.FlagSubjectDecoration.1  => test:subject_decoration_escalates_to_flag exercises=escalate_subject_decoration

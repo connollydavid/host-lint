@@ -1,6 +1,9 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 
 // flag tier: the high-centrality words for a unit of iterative project work,
 // the agentic ordinal-naming tell the gate exists to block. The set is grounded in
@@ -802,6 +805,20 @@ pub fn is_strict_directive(line: &str) -> bool {
         .is_some_and(|r| r.trim() == "host-lint: strict")
 }
 
+/// The `root` directive: this LEXICON is the top of its own scope, so the search
+/// that found it stops here rather than continuing to an enclosing repository.
+///
+/// It exists because a repository can contain another one. A vendored template,
+/// a submodule, a subtree: its documents are governed by its own vocabulary, and
+/// inheriting the enclosing project's would legitimize a token there that the
+/// inner repository never declared. Declaring `root` in the inner LEXICON keeps
+/// the two apart, and the outer project needs to know nothing about the inner.
+pub fn is_root_directive(line: &str) -> bool {
+    line.trim()
+        .strip_prefix('#')
+        .is_some_and(|r| r.trim() == "host-lint: root")
+}
+
 /// Parse one LEXICON line into an entry, or `None` for a blank, comment, or
 /// directive line. A comment is `#` followed by a non-digit (so `# note` and
 /// `## heading` are comments, but `#7 …` is a hash-number entry — this is what
@@ -995,6 +1012,9 @@ pub struct Lexicon {
     pub jira_keys: Vec<String>,
     pub units: Vec<String>,
     pub entries: Vec<LexiconEntry>,
+    /// This file declared `host-lint: root`, so a search that reached it stops
+    /// rather than continuing into an enclosing repository.
+    pub is_root: bool,
 }
 
 /// Read and validate the repo's `LEXICON` file (at `root`). An invalid entry — a master
@@ -1004,7 +1024,7 @@ pub struct Lexicon {
 /// loader both the CLI and an embedder call, so the prose/`--docs` lane masks the same
 /// declared phrases everywhere.
 pub fn load_lexicon(root: &Path) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new() };
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new(), is_root: false };
     if root.as_os_str().is_empty() {
         return lex;
     }
@@ -1017,6 +1037,8 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
     for line in content.lines() {
         if is_strict_directive(line) {
             lex.strict = true;
+        } else if is_root_directive(line) {
+            lex.is_root = true;
         } else if let Some(keys) = parse_jira_keys(line) {
             lex.jira_keys.extend(keys);
         } else if let Some(u) = parse_unit_directive(line) {
@@ -1025,7 +1047,11 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
     }
     // Then the entries, validated against the collected directives.
     for line in content.lines() {
-        if is_strict_directive(line) || parse_jira_keys(line).is_some() || parse_unit_directive(line).is_some() {
+        if is_strict_directive(line)
+            || is_root_directive(line)
+            || parse_jira_keys(line).is_some()
+            || parse_unit_directive(line).is_some()
+        {
             continue;
         }
         let Some(entry) = parse_lexicon_line(line) else { continue };
@@ -1038,6 +1064,92 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
     }
     lex
 }
+
+/// Resolve the lexicon governing `dir`, nearest first, stopping at `stop_at` or
+/// at the first LEXICON declaring `host-lint: root`.
+///
+/// One repository can contain another, so "the repo's LEXICON" is not a single
+/// file. The search starts beside the document being scanned and walks outward,
+/// which is what makes a vendored subtree answer to its own vocabulary rather
+/// than to whichever directory the command happened to run from. Before this,
+/// the lexicon came from the invocation root, so linting an inner repository's
+/// document from the outer one masked it with the outer project's phrases and
+/// reported a defect that belonged to neither.
+///
+/// Phrases, tracker keys and units accumulate outward, because an allowlist is
+/// additive: a nearer file adds to what encloses it rather than replacing it.
+/// `strict` holds if any file in the chain declares it, so an inner scope can
+/// never quietly relax an outer escalation. A scope that wants none of the
+/// enclosing vocabulary says so with `root`, which is the only way to stop
+/// inheriting and is visible in the file that chooses it.
+pub fn resolve_lexicon(dir: &Path, stop_at: &Path) -> Lexicon {
+    let mut merged = Lexicon {
+        phrases_lc: Vec::new(),
+        strict: false,
+        jira_keys: Vec::new(),
+        units: Vec::new(),
+        entries: Vec::new(),
+        is_root: false,
+    };
+    let mut here = Some(dir.to_path_buf());
+    while let Some(d) = here {
+        if d.join("LEXICON").exists() {
+            let lex = load_lexicon(&d);
+            merged.phrases_lc.extend(lex.phrases_lc);
+            merged.jira_keys.extend(lex.jira_keys);
+            merged.units.extend(lex.units);
+            merged.entries.extend(lex.entries);
+            merged.strict |= lex.strict;
+            if lex.is_root {
+                merged.is_root = true;
+                break;
+            }
+        }
+        // `stop_at` bounds the walk so a scan never reads a LEXICON from outside
+        // the tree under audit, which would let a file above the repository
+        // decide what this one may say.
+        if d == stop_at {
+            break;
+        }
+        here = d.parent().map(Path::to_path_buf);
+    }
+    merged.phrases_lc.sort_unstable();
+    merged.phrases_lc.dedup();
+    merged
+}
+
+/// A `resolve_lexicon` that remembers, so a walk of many documents reads each
+/// directory's LEXICON once rather than once per file.
+pub struct LexiconScopes {
+    stop_at: PathBuf,
+    seen: RefCell<HashMap<PathBuf, Rc<Lexicon>>>,
+}
+
+impl LexiconScopes {
+    pub fn new(stop_at: &Path) -> Self {
+        LexiconScopes { stop_at: stop_at.to_path_buf(), seen: RefCell::new(HashMap::new()) }
+    }
+
+    /// The lexicon governing `file`, which is the one resolved from its parent
+    /// directory. A path with no parent falls back to the bounding root.
+    pub fn for_file(&self, file: &Path) -> Rc<Lexicon> {
+        // A bare filename's parent is the empty path, not `None`, and an empty
+        // root reads no lexicon at all. Both spellings mean the same directory,
+        // so both resolve to the bounding root rather than one silently
+        // returning nothing.
+        let dir = match file.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            _ => self.stop_at.clone(),
+        };
+        if let Some(hit) = self.seen.borrow().get(&dir) {
+            return Rc::clone(hit);
+        }
+        let lex = Rc::new(resolve_lexicon(&dir, &self.stop_at));
+        self.seen.borrow_mut().insert(dir, Rc::clone(&lex));
+        lex
+    }
+}
+
 
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     scan_text_with_allow(input, source, &[], matches);
@@ -1372,7 +1484,7 @@ pub struct DocScan {
 /// one engine (host-lifecycle#2).
 pub fn run_docs(
     root: &Path,
-    allow: &[String],
+    scopes: &LexiconScopes,
     ignore: &[String],
     corpus: Corpus,
 ) -> Result<DocScan, String> {
@@ -1410,7 +1522,13 @@ pub fn run_docs(
         // (agentic-host call/0048). The caller decides what to do about it; every
         // caller that gates must refuse.
         match fs::read_to_string(&path) {
-            Ok(content) => scan_prose_text(&content, rel, allow, &mut scan.matches),
+            Ok(content) => {
+                // Resolved from the document's own directory, so a document inside
+                // a vendored repository is read against that repository's lexicon
+                // rather than this one's (host-lint#26).
+                let lex = scopes.for_file(&path);
+                scan_prose_text(&content, rel, &lex.phrases_lc, &mut scan.matches)
+            }
             Err(_) => scan.unread.push(rel.clone()),
         }
     }

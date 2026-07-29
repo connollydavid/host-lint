@@ -7,6 +7,17 @@ config {
     -- The committed LEXICON `strict` directive. When set, the naming-warn tier
     -- escalates to a block (a declarable lexicon makes an undeclared tell a hard
     -- signal). Default off, so a project without a lexicon is unaffected.
+    --
+    -- A document's lexicon is resolved from its own directory outward, so more
+    -- than one LEXICON can govern one scan and this value is the disjunction
+    -- over that chain: strict holds if any scope in it declares strict. The
+    -- direction is deliberate. An inner scope may add vocabulary, because an
+    -- allowlist is additive and admitting a phrase is a local claim; it may not
+    -- subtract enforcement, because a subtree that could switch strict off
+    -- would let an escalation the enclosing project committed to be dropped by
+    -- a file inside it. `host-lint: root` stops the walk, which is how a
+    -- vendored repository declines the vocabulary of whatever encloses it, and
+    -- is the only way to do so.
     strict: Boolean = false
 }
 
@@ -67,6 +78,10 @@ entity Check {
     status: scanning | clean | advisory | blocked
     saw_flag: Boolean
     saw_warn: Boolean
+    -- Whether any LEXICON in the resolved scope chain declares strict. Held on
+    -- the run rather than on a line, because the chain is a property of where
+    -- the document sits and not of what it says.
+    any_scope_declares_strict: Boolean
     transitions status {
         scanning -> blocked
         scanning -> advisory
@@ -137,6 +152,16 @@ rule EscalateUnderStrict {
     when: match: Match.created
     requires: config.strict and match.severity = warn
     ensures: match.severity = flag
+}
+
+-- Resolving a document's lexicon outward means an enclosing scope's escalation
+-- reaches it. A scan under a scope chain where any LEXICON declares strict is
+-- scanned strictly, whatever the nearest one says, so an inner scope cannot
+-- relax what encloses it (host-lint#26).
+rule StrictHoldsAcrossScopes {
+    when: check: Check.created
+    requires: check.any_scope_declares_strict
+    ensures: config.strict
 }
 
 -- The commit subject (first line of a message) and a gh title are held to the

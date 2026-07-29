@@ -1357,15 +1357,19 @@ fn run_docs_masks_a_lexicon_declared_prose_tell() {
     git(&dir, &["add", "-A"]);
     git(&dir, &["commit", "-qm", "doc"]);
     // Undeclared: the prose tell fires.
-    let bare = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
+    let bare = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree).unwrap();
     assert!(
         bare.matches.iter().any(|m| m.severity == Severity::Warn),
         "undeclared, the ai-diction term warns in the --docs walk"
     );
     // Declared: the same phrases are masked before detection, so the warn clears —
     // the in-process embedder gets the identical verdict to standalone `host-lint --docs`.
-    let allow = vec!["wdm-harness".to_string(), "the harness".to_string()];
-    let masked = host_lint::run_docs(&dir, &allow, &[], host_lint::Corpus::WorkingTree).unwrap();
+    // Declared through a real LEXICON, since run_docs resolves the scope of each
+    // document it reads rather than taking a list from its caller.
+    fs::write(dir.join("LEXICON"), "wdm-harness\nthe harness\n").unwrap();
+    let masked =
+        host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree)
+            .unwrap();
     assert!(
         !masked.matches.iter().any(|m| m.severity == Severity::Warn),
         "a LEXICON-declared phrase clears the prose tell in the shared --docs walk"
@@ -1396,7 +1400,7 @@ fn run_docs_scans_untracked_authored_but_not_gitignored() {
     // A brand-new authored doc, created but never staged.
     fs::write(dir.join("new.md"), trope).unwrap();
 
-    let m = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
+    let m = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree).unwrap();
     let flagged: std::collections::HashSet<&str> = m.matches.iter().map(|x| x.file.as_str()).collect();
     assert!(flagged.contains("tracked.md"), "a tracked authored doc is scanned");
     assert!(
@@ -1427,12 +1431,12 @@ fn the_record_corpus_leaves_the_uncommitted_draft_alone() {
     git(&dir, &["commit", "-qm", "init"]);
     fs::write(dir.join("scratch.md"), trope).unwrap();
 
-    let hook = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::WorkingTree).unwrap();
+    let hook = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree).unwrap();
     let hook_files: std::collections::HashSet<&str> =
         hook.matches.iter().map(|x| x.file.as_str()).collect();
     assert!(hook_files.contains("scratch.md"), "the hook still sees the uncommitted draft");
 
-    let gate = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::Record).unwrap();
+    let gate = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::Record).unwrap();
     let gate_files: std::collections::HashSet<&str> =
         gate.matches.iter().map(|x| x.file.as_str()).collect();
     assert!(gate_files.contains("tracked.md"), "the gate still judges the recorded document");
@@ -1462,7 +1466,7 @@ fn a_document_that_cannot_be_read_is_named_rather_than_skipped() {
     git(&dir, &["commit", "-qm", "init"]);
     fs::set_permissions(dir.join("locked.md"), fs::Permissions::from_mode(0o000)).unwrap();
 
-    let scan = host_lint::run_docs(&dir, &[], &[], host_lint::Corpus::Record).unwrap();
+    let scan = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::Record).unwrap();
     assert!(
         scan.unread.iter().any(|p| p == "locked.md"),
         "the walk names the document it could not open, so a caller can refuse"
@@ -1505,4 +1509,122 @@ fn a_noun_swap_does_not_evade_the_ordinal_heading_rule() {
     // Not a heading at all.
     assert!(f("Check 1 of the sequence").is_none());
     assert!(f("####### Check 1").is_none(), "seven hashes is not a heading");
+}
+
+// === LEXICON scopes: one repository can contain another ===============
+
+/// A scratch tree under `target/` (gitignored, so a stray directory never
+/// reaches a commit). Named per test, and cleared first so a re-run starts from
+/// nothing rather than from what the last one left.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = Path::new("target").join("lexicon-scopes").join(name);
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("scratch tree");
+    dir
+}
+
+fn lexicon_at(dir: &Path, body: &str) {
+    fs::create_dir_all(dir).expect("scope dir");
+    fs::write(dir.join("LEXICON"), body).expect("LEXICON");
+}
+
+#[test]
+fn a_nested_scope_adds_to_the_one_enclosing_it() {
+    let root = scratch("adds");
+    lexicon_at(&root, "outer phrase here\n");
+    let inner = root.join("vendored");
+    lexicon_at(&inner, "inner phrase here\n");
+
+    let lex = host_lint::resolve_lexicon(&inner, &root);
+    assert!(lex.phrases_lc.iter().any(|p| p == "inner phrase here"));
+    assert!(
+        lex.phrases_lc.iter().any(|p| p == "outer phrase here"),
+        "an allowlist is additive, so the enclosing scope still applies"
+    );
+}
+
+#[test]
+fn a_scope_declaring_root_inherits_nothing() {
+    let root = scratch("root-stops");
+    lexicon_at(&root, "outer phrase here\n");
+    let inner = root.join("template");
+    lexicon_at(&inner, "# host-lint: root\ninner phrase here\n");
+
+    let lex = host_lint::resolve_lexicon(&inner, &root);
+    assert!(lex.is_root);
+    assert!(lex.phrases_lc.iter().any(|p| p == "inner phrase here"));
+    assert!(
+        !lex.phrases_lc.iter().any(|p| p == "outer phrase here"),
+        "a vendored repository answers to its own vocabulary, not its host's"
+    );
+}
+
+#[test]
+fn an_inner_scope_cannot_relax_an_outer_escalation() {
+    let root = scratch("strict-holds");
+    lexicon_at(&root, "# host-lint: strict\nouter phrase here\n");
+    let inner = root.join("sub");
+    lexicon_at(&inner, "inner phrase here\n");
+
+    assert!(
+        host_lint::resolve_lexicon(&inner, &root).strict,
+        "strict holds if any scope in the chain declares it"
+    );
+}
+
+#[test]
+fn the_walk_does_not_read_a_lexicon_above_the_tree_under_audit() {
+    let outside = scratch("bounded");
+    lexicon_at(&outside, "phrase from outside\n");
+    let root = outside.join("repo");
+    lexicon_at(&root, "phrase from the repo\n");
+    let inner = root.join("docs");
+    fs::create_dir_all(&inner).expect("docs dir");
+
+    let lex = host_lint::resolve_lexicon(&inner, &root);
+    assert!(lex.phrases_lc.iter().any(|p| p == "phrase from the repo"));
+    assert!(
+        !lex.phrases_lc.iter().any(|p| p == "phrase from outside"),
+        "a file above the repository does not decide what this one may say"
+    );
+}
+
+#[test]
+fn the_root_directive_is_a_directive_and_not_an_entry() {
+    assert!(host_lint::is_root_directive("# host-lint: root"));
+    assert!(host_lint::is_root_directive("  #   host-lint: root  "));
+    assert!(!host_lint::is_root_directive("# host-lint: rooted"));
+    assert!(!host_lint::is_root_directive("host-lint: root"));
+    assert!(
+        parse_lexicon_line("# host-lint: root").is_none(),
+        "a directive never masks as a phrase"
+    );
+}
+
+#[test]
+fn a_bare_filename_resolves_where_a_dotted_one_does() {
+    // `doc.md` and `./doc.md` name the same file. The first has an empty parent
+    // rather than none, and an empty root reads no lexicon, so the two spellings
+    // once disagreed about which phrases were declared.
+    let root = scratch("bare-name");
+    lexicon_at(&root, "declared phrase here\n");
+
+    let scopes = host_lint::LexiconScopes::new(&root);
+    let bare = scopes.for_file(Path::new("doc.md"));
+    let dotted = scopes.for_file(&root.join("doc.md"));
+    assert_eq!(bare.phrases_lc, dotted.phrases_lc);
+    assert!(dotted.phrases_lc.iter().any(|p| p == "declared phrase here"));
+}
+
+#[test]
+fn no_scope_declaring_strict_leaves_it_off() {
+    // The other side of the merge rule: strict is a disjunction over the chain,
+    // so a chain that declares it nowhere resolves to off rather than inheriting
+    // an escalation nobody committed to.
+    let root = scratch("strict-off");
+    lexicon_at(&root, "outer phrase here\n");
+    let inner = root.join("sub");
+    lexicon_at(&inner, "inner phrase here\n");
+
+    assert!(!host_lint::resolve_lexicon(&inner, &root).strict);
 }
