@@ -360,13 +360,33 @@ a verdict):
 
 | Tell id | Signals | Cite |
 |---|---|---|
-| `ai-diction` | delve, utilize, leverage, robust, streamline, harness, tapestry, landscape, realm, paradigm, synergy, ecosystem, underscore, showcase, intricate, nuanced, multifaceted | tropes.fyi: AI vocabulary |
+| `ai-diction` | delve, certainly, utilize, robust, streamline; `leverage` and `harness` as verbs only (`to leverage`, `leveraging`, `leverages`; `harness/harnesses/harnessing/harnessed the power` or `the potential`) | tropes.fyi: Delve and Friends |
+| `grandiose-noun` | tapestry, landscape, synergy | tropes.fyi: Tapestry and Landscape |
+| `house-diction` | realm, underscore, showcase, intricate, nuanced, multifaceted | this project, not in the tropes.fyi catalog (call/0051) |
 | `magic-adverb` | deeply, fundamentally, remarkably, profoundly, crucially | tropes.fyi: intensifier inflation |
 | `serves-as` | serves as, stands as, represents a, acts as a | tropes.fyi: copula dodge |
 | `filler-transition` | it's worth noting, it bears mentioning, importantly, notably, needless to say | tropes.fyi: empty signpost |
 | `signposted-conclusion` | in conclusion, to sum up, in summary, all in all | tropes.fyi: signposted conclusion |
 | `pedagogical-hook` | let's unpack, let's dive in, let's break this down, here's the kicker, here's the thing, buckle up | tropes.fyi: false suspense |
 | `decoration` | em/en-dash `—` `–`, smart quotes `“ ” ‘ ’`, arrow `→` | tropes.fyi: typographic polish |
+
+Three word-choice rules stand where one stood before, and each cites what it
+actually came from. The catalog holds two separate entries here, the overused
+vocabulary family and the grandiose nouns, so a verdict now names which one it
+matched. The third holds terms this project added; the catalog does not contain
+them, and a rule may not cite a source that does not carry it.
+
+Two departures from the catalog are deliberate, and both are recorded in
+[call/0051](../../../call/0051-a-lexicon-entry-reports-a-grammar-defect.md). The
+catalog qualifies `leverage` as a verb, and the same qualifier is applied to
+`harness`, whose noun (a test harness, a proof harness, an agent harness) is a
+term of art. The catalog also lists `framework`, `ecosystem` and `paradigm` among
+the grandiose nouns; all three are held out, because the catalog describes general
+prose while this rule runs over software documentation, where each names a real
+thing (a merge-driver framework, a package ecosystem, the actor paradigm). A term
+is narrowed on a measured collision, never on a reading of the word, and one is
+added the same way. `landscape` stays: its technical uses are compounds, and a
+compound is what a repo's `LEXICON` declares.
 
 ### Structural layer (equations)
 

@@ -132,8 +132,8 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "host-grammar"
-version = "0.4.0"
-source = "git+https://github.com/connollydavid/host-grammar?rev=9470b81c9c851b0fedc872203437ea0de60b7f62#9470b81c9c851b0fedc872203437ea0de60b7f62"
+version = "0.6.0"
+source = "git+https://github.com/connollydavid/host-grammar?rev=7f73dfa9c332d6d4f623dfe59caa7437491287a2#7f73dfa9c332d6d4f623dfe59caa7437491287a2"
 dependencies = [
  "pulldown-cmark",
  "unicode-segmentation",

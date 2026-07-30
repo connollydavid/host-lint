@@ -260,15 +260,15 @@ rm -f "$md"
 echo ""
 echo "--- prose LEXICON (issue #16) ---"
 plx=$(mktemp -d)
-printf 'The rehost harness logs to disk; a second harness runs nightly.\n' > "$plx/doc.md"
-# No LEXICON: both harness occurrences flag as ai-diction (exit 3).
+printf 'The fitness-landscape logs to disk; a second landscape runs nightly.\n' > "$plx/doc.md"
+# No LEXICON: both landscape occurrences flag as grandiose-noun (exit 3).
 out=$(cd "$plx" && "$BINARY_ABS" --prose doc.md 2>&1) && rc=0 || rc=$?
-n=$(printf '%s\n' "$out" | grep -c 'harness')
-{ [ "$rc" -eq 3 ] && [ "$n" -eq 2 ]; } && ok "prose: harness flags twice with no LEXICON" || bad "prose no-LEXICON (rc=$rc n=$n)"
+n=$(printf '%s\n' "$out" | grep -c 'landscape')
+{ [ "$rc" -eq 3 ] && [ "$n" -eq 2 ]; } && ok "prose: landscape flags twice with no LEXICON" || bad "prose no-LEXICON (rc=$rc n=$n)"
 # Declare the phrase: the occurrence inside it is masked, the standalone still flags.
-printf 'rehost harness\n' > "$plx/LEXICON"
+printf 'fitness-landscape\n' > "$plx/LEXICON"
 out=$(cd "$plx" && "$BINARY_ABS" --prose doc.md 2>&1) && rc=0 || rc=$?
-n=$(printf '%s\n' "$out" | grep -c 'harness')
+n=$(printf '%s\n' "$out" | grep -c 'landscape')
 { [ "$rc" -eq 3 ] && [ "$n" -eq 1 ]; } && ok "prose: declared phrase masked, standalone still flags" || bad "prose LEXICON mask (rc=$rc n=$n)"
 rm -rf "$plx"
 

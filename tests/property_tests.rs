@@ -879,22 +879,25 @@ fn prose_one(input: &str, source: &str, allow: &[&str]) -> Vec<host_lint::Match>
 
 #[test]
 fn prose_lexicon_masks_a_trope_within_a_declared_phrase() {
-    // `harness` is an ai-diction prose trope; a project that legitimately runs a
-    // `rehost harness` declares the phrase, and the prose lane masks the trope
-    // within it, the same pre-detection blank-out the naming lane already performs.
-    let line = "The rehost harness logs to disk; a second harness runs nightly.";
+    // `tapestry` is a grandiose-noun prose trope, and also the name of a real Java
+    // web framework; a project that runs on Apache Tapestry declares the phrase, and
+    // the prose lane masks the trope within it, the same pre-detection blank-out the
+    // naming lane already performs. The declared phrase sits off column one on
+    // purpose: masking it at the line start would indent the line into a markdown
+    // code block and clear every tell on it (connollydavid/host-lint#26).
+    let line = "The Apache Tapestry app logs to disk; a second tapestry runs nightly.";
     let undeclared = prose_one(line, "doc.md", &[]);
-    assert_eq!(undeclared.len(), 2, "both harness occurrences flag with no LEXICON");
-    let masked = prose_one(line, "doc.md", &["rehost harness"]);
+    assert_eq!(undeclared.len(), 2, "both tapestry occurrences flag with no LEXICON");
+    let masked = prose_one(line, "doc.md", &["apache tapestry"]);
     assert_eq!(masked.len(), 1, "the occurrence inside the declared phrase is cleared");
-    // The surviving flag is the standalone `harness`, not the one inside the phrase:
+    // The surviving flag is the standalone `tapestry`, not the one inside the phrase:
     // it sits at the second occurrence's column (surgical at the word boundary).
     assert_eq!(masked[0].col, undeclared[1].col);
 }
 
 #[test]
 fn prose_empty_or_irrelevant_allow_leaves_all_flags() {
-    let line = "The rehost harness logs to disk; a second harness runs nightly.";
+    let line = "The Apache Tapestry app logs to disk; a second tapestry runs nightly.";
     assert_eq!(prose_one(line, "doc.md", &[]).len(), 2, "no LEXICON masks nothing");
     // An entry that does not occur in the text masks nothing (unchanged behaviour).
     assert_eq!(prose_one(line, "doc.md", &["windows 3.1"]).len(), 2);
@@ -1348,10 +1351,14 @@ fn run_docs_masks_a_lexicon_declared_prose_tell() {
     git(&dir, &["init", "-q", "-b", "main"]);
     git(&dir, &["config", "user.email", "t@t"]);
     git(&dir, &["config", "user.name", "t"]);
-    // "harness" is an ai-diction term; two occurrences in one doc trip the density warn.
+    // "landscape" is a grandiose-noun term; two occurrences in one doc trip the
+    // density warn. The declared phrase is hyphenated on purpose: a hyphen is a
+    // non-word character inside the phrase, so it exercises the masker's boundary
+    // handling, which a space-separated phrase (the sibling test's "apache tapestry")
+    // does not reach. A fitness-landscape is genuine optimization vocabulary.
     fs::write(
         dir.join("doc.md"),
-        "# Title\n\nThe wdm-harness drives the lane. The harness emits a verdict.\n",
+        "# Title\n\nThe fitness-landscape drives the lane. The landscape emits a verdict.\n",
     )
     .unwrap();
     git(&dir, &["add", "-A"]);
@@ -1360,13 +1367,13 @@ fn run_docs_masks_a_lexicon_declared_prose_tell() {
     let bare = host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree).unwrap();
     assert!(
         bare.matches.iter().any(|m| m.severity == Severity::Warn),
-        "undeclared, the ai-diction term warns in the --docs walk"
+        "undeclared, the grandiose-noun term warns in the --docs walk"
     );
     // Declared: the same phrases are masked before detection, so the warn clears —
     // the in-process embedder gets the identical verdict to standalone `host-lint --docs`.
     // Declared through a real LEXICON, since run_docs resolves the scope of each
     // document it reads rather than taking a list from its caller.
-    fs::write(dir.join("LEXICON"), "wdm-harness\nthe harness\n").unwrap();
+    fs::write(dir.join("LEXICON"), "fitness-landscape\nthe landscape\n").unwrap();
     let masked =
         host_lint::run_docs(&dir, &host_lint::LexiconScopes::new(&dir), &[], host_lint::Corpus::WorkingTree)
             .unwrap();
