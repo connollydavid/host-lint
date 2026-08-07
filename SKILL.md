@@ -30,11 +30,17 @@ cp pre-commit .git/hooks/commit-msg
 chmod +x .git/hooks/host-lint .git/hooks/pre-commit .git/hooks/commit-msg
 ```
 
+Installed as `commit-msg`, the script hands the staged diff to the `commit` verb when the binary carries it, and falls back to `--stdin` with a line naming the unrun check when it does not.
+
 ### As a CLI
 
 ```
 # Scan commit message from stdin
 echo "Phase 1: setup" | ./host-lint --stdin
+
+# Check a commit message against the diff it describes
+git diff --cached > staged.diff
+./host-lint commit --message msg.txt --diff staged.diff
 
 # Scan specific files
 ./host-lint README.md src/main.rs
@@ -53,6 +59,14 @@ echo "Phase 1: setup" | ./host-lint --stdin
 
 Hooks only gate new commits, and rules grow over time, so run a one-shot audit when installing the skill into an existing repo or after upgrading the binary: `./host-lint --all` (fix flagged live files) and `./host-lint --log` (history findings — informational by default). If the user opts to clean history, guide the archive-then-rewrite flow from the README: create and push an archive branch preserving the original history, then `git commit --amend` (tip) or rebase/filter-repo (deeper) and force-push with lease. Link each replaced commit to its replacement with a `Superseded-by: <new-sha>` trailer via `git notes add` (push `refs/notes/commits` too) so the archive stays coherent. Never rewrite without archiving first or on branches the user does not control.
 
+### Writing the message (guidance the tool does not check)
+
+The tool checks the message's vocabulary, its prose shapes, and its duplication against the diff (VOCABULARY.md). The faults below recur in the same messages and have no rule; nothing enforces them, so apply them as you write:
+
+- Describe the change; do not argue for it. If a paragraph reads as advocacy, move it to the record that owns the decision (an issue, a design record) and keep the message to what changed.
+- Answer only points a reviewer raised. Cut any rebuttal of an alternative nobody proposed.
+- Ground the change in this repository's own reasons. Precedent framing ("other projects already do this") matched nothing in accepted history (the out-of-scope note in VOCABULARY.md's commit-time duplication entry); when you reach for it, state the local reason instead.
+
 ### As an agent skill
 
 Run the binary against the target and act on results:
@@ -66,7 +80,7 @@ Run the binary against the target and act on results:
 - `0` — clean, no tells found
 - `1` — one or more confirmed tells detected (blocks a commit hook)
 - `2` — usage error or `git` failure
-- `3` — warnings only: the bare-numeral degenerate form (`5.5:`, `(5.5)`, `work-item 5.3`). Advisory — a hook prints these and lets the commit through; an agent should reconsider them, not treat them as a hard stop.
+- `3` — warnings only, the advisory forms: the bare-numeral degenerate form (`5.5:`, `(5.5)`, `work-item 5.3`), an ordinal-scaffold heading, a message sentence restating a comment its diff adds. Advisory — a hook prints these and lets the commit through; an agent should reconsider them, not treat them as a hard stop.
 
 ## Portability notes
 

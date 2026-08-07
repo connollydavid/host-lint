@@ -1344,6 +1344,139 @@ fn find_tell(haystack: &str, needle: &str, from: usize) -> Option<usize> {
     None
 }
 
+// === The commit verb's duplication check (host-lint#28) ===
+//
+// A sentence appearing in both an added comment and the message body is recorded
+// twice, and the message copy goes stale when the comment is next edited. The
+// check is a pure comparison over the two texts the caller hands in; nothing here
+// reads a repository. The sentence granularity, the eight-word bar, and the
+// body-only boundary are calibrated settings (host-lint#28).
+
+/// The comment text of an added unified-diff line, or `None` for every other line.
+/// The gate is the added line's own leading shape (`#`, `//` and its doc forms,
+/// `/*`, a block continuation `* `, `--` with a following space, `<!--`); a
+/// heading in added markdown is comment-shaped by this gate.
+pub fn added_comment_text(line: &str) -> Option<String> {
+    let added = line.strip_prefix('+')?;
+    if added.starts_with("++") {
+        return None; // the +++ file header of the diff, not content
+    }
+    let t = added.trim_start();
+    let rest = if let Some(r) = t.strip_prefix("<!--") {
+        r
+    } else if t.starts_with("//") {
+        let r = t.trim_start_matches('/');
+        r.strip_prefix('!').unwrap_or(r)
+    } else if let Some(r) = t.strip_prefix("/*") {
+        r.trim_start_matches('*')
+    } else if t.starts_with('#') {
+        t.trim_start_matches('#')
+    } else if t.starts_with("--") && t.chars().nth(2).is_some_and(|c| c.is_whitespace()) {
+        t.trim_start_matches('-')
+    } else {
+        t.strip_prefix("* ")?
+    };
+    Some(rest.strip_prefix(' ').unwrap_or(rest).trim_end().to_string())
+}
+
+/// ASCII-lowercased, punctuation replaced by spaces, whitespace collapsed to
+/// single spaces: the comparison form for both sides of the restatement check.
+pub fn normalize_for_restate(s: &str) -> String {
+    const PUNCT: &[char] = &[
+        '`', '*', '_', '\'', '"', '“', '”', '‘', '’', '(', ')', '.', ',', ';', ':',
+        '!', '?', '[', ']', '{', '}', '<', '>', '#', '=', '|', '-',
+    ];
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if PUNCT.contains(&c) || c.is_whitespace() {
+            if !out.is_empty() && !out.ends_with(' ') {
+                out.push(' ');
+            }
+        } else {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    out
+}
+
+/// Sentences split on a run of `.`/`!`/`?` at a whitespace-or-end boundary, so a
+/// version number (`v3.5 is`) never splits mid-token.
+pub fn split_sentences(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if matches!(c, '.' | '!' | '?') {
+            let mut run = String::from(c);
+            while let Some(&p) = chars.peek() {
+                if matches!(p, '.' | '!' | '?') {
+                    run.push(p);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if chars.peek().map(|p| p.is_whitespace()).unwrap_or(true) {
+                let s = cur.trim();
+                if !s.is_empty() {
+                    out.push(s.to_string());
+                }
+                cur.clear();
+            } else {
+                cur.push_str(&run);
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    let s = cur.trim();
+    if !s.is_empty() {
+        out.push(s.to_string());
+    }
+    out
+}
+
+/// The distinct sentences of eight-plus normalized words from a diff's added
+/// comment runs whose normalized form appears inside the normalized `body`. The
+/// caller passes the message BODY, never the whole message: a subject that
+/// matches an added title is the record-title convention.
+pub fn restated_comment_sentences(diff: &str, body: &str) -> Vec<String> {
+    let nbody = normalize_for_restate(body);
+    if nbody.is_empty() {
+        return Vec::new();
+    }
+    let mut runs: Vec<String> = Vec::new();
+    let mut cur: Vec<String> = Vec::new();
+    for line in diff.lines() {
+        match added_comment_text(line) {
+            Some(t) => cur.push(t),
+            None => {
+                if !cur.is_empty() {
+                    runs.push(cur.join(" "));
+                    cur.clear();
+                }
+            }
+        }
+    }
+    if !cur.is_empty() {
+        runs.push(cur.join(" "));
+    }
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for run in &runs {
+        for s in split_sentences(run) {
+            let n = normalize_for_restate(&s);
+            if !n.is_empty() && n.split(' ').count() >= 8 && nbody.contains(&n) && seen.insert(n) {
+                out.push(s);
+            }
+        }
+    }
+    out
+}
+
 /// Scan `input` as prose for agentic tells (the host-grammar engine), pushing
 /// each as an advisory `Warn` match, plus one document-level match when the tell
 /// density crosses the threshold. Used for titles, comments, and `--prose` docs;

@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 
-use host_lint::{Corpus, Match, LexiconEntry, LexiconScopes, load_lexicon, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
+use host_lint::{Corpus, Match, LexiconEntry, LexiconScopes, Severity, load_lexicon, normalize_for_restate, restated_comment_sentences, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -522,6 +522,118 @@ fn run_gather(root: &str) -> ! {
     process::exit(0);
 }
 
+/// `commit --message <file> [--diff <file>] [--json]`: the commit-time verb
+/// (host-lint#28). The stdin path's three message checks, plus the duplication
+/// check over the staged diff. Absent `--diff` the message checks still verdict,
+/// and the unrun check is disclosed beside them as a note, because a check that
+/// could not run must not read as a check that passed.
+fn run_commit(root: &str, args: &[String]) -> ! {
+    let (mut message, mut diff, mut json) = (None::<String>, None::<String>, false);
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--message" => {
+                message = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--diff" => {
+                diff = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--json" => {
+                json = true;
+                i += 1;
+            }
+            other => {
+                eprintln!("host-lint: commit does not take `{other}`");
+                eprintln!("usage: host-lint commit --message <file> [--diff <file>] [--json]");
+                process::exit(2);
+            }
+        }
+    }
+    let Some(mpath) = message else {
+        eprintln!("usage: host-lint commit --message <file> [--diff <file>] [--json]");
+        process::exit(2);
+    };
+    let input = match fs::read_to_string(&mpath) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("host-lint: cannot read {mpath}: {e}");
+            process::exit(2);
+        }
+    };
+    let lex = load_lexicon(Path::new(root));
+    let mut matches = Vec::new();
+    scan_text_with_allow_strict(&input, "commit-msg", &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
+    scan_prose_text(&input, "commit-msg", &lex.phrases_lc, &mut matches);
+    escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
+    match &diff {
+        Some(dpath) => {
+            // A named diff that cannot be read is an error, never a silent skip
+            // (the host-lint#23 rule for explicit arguments).
+            let dtext = match fs::read_to_string(dpath) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("host-lint: cannot read {dpath}: {e}");
+                    process::exit(2);
+                }
+            };
+            let body: String = input.lines().skip(1).collect::<Vec<_>>().join("\n");
+            for s in restated_comment_sentences(&dtext, &body) {
+                let line = locate_in_body(&input, &s);
+                let quoted: String = if s.chars().count() > 80 {
+                    s.chars().take(77).collect::<String>() + "..."
+                } else {
+                    s.clone()
+                };
+                matches.push(Match {
+                    file: "commit-msg".into(),
+                    line,
+                    col: 0,
+                    text: format!("the message restates a comment the commit adds (\"{quoted}\") - trim the sentence from the message; keep the comment"),
+                    term: "message-restates-diff".into(),
+                    severity: Severity::Warn,
+                    cite: String::new(),
+                });
+            }
+        }
+        None => {
+            matches.push(Match {
+                file: "commit-msg".into(),
+                line: 0,
+                col: 0,
+                text: "duplication not checked (no --diff provided)".into(),
+                term: "message-restates-diff".into(),
+                severity: Severity::Note,
+                cite: String::new(),
+            });
+        }
+    }
+    if json {
+        output_json(&matches);
+    } else {
+        output_text(&matches);
+    }
+    process::exit(host_lint::verdict_code(&matches));
+}
+
+/// The 1-based message line where the restated sentence's opening words appear.
+/// Line 1 (the subject) is never the answer, and an unlocatable sentence reports
+/// the whole document (line 0), the prose lane's convention.
+fn locate_in_body(message: &str, sentence: &str) -> usize {
+    let n = normalize_for_restate(sentence);
+    let prefix: String = n.split(' ').take(4).collect::<Vec<_>>().join(" ");
+    if prefix.is_empty() {
+        return 0;
+    }
+    for (i, l) in message.lines().enumerate().skip(1) {
+        if normalize_for_restate(l).contains(&prefix) {
+            return i + 1;
+        }
+    }
+    0
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -543,6 +655,13 @@ fn main() {
     }
     if args.get(1).map(String::as_str) == Some("packs") {
         run_packs_list();
+    }
+
+    // `commit` is the commit-time verb (host-lint#28): the message and the staged
+    // diff as named inputs, because the duplication check needs both and a verdict
+    // must reproduce from bytes visible in the invocation.
+    if args.get(1).map(String::as_str) == Some("commit") {
+        run_commit(&repo_root(), &args[2..]);
     }
 
     let mut stdin_flag = false;
@@ -682,6 +801,7 @@ fn main() {
         run_log(allow, units, strict, &mut matches);
     } else if files.is_empty() {
         eprintln!("Usage: host-lint [--stdin] [--prose] [--docs] [--json] [--all] [--log] [files...]");
+        eprintln!("       host-lint commit --message <file> [--diff <file>] [--json]");
         process::exit(2);
     } else {
         // Honor `.host-lintignore` for explicit file args too — the git hook scans

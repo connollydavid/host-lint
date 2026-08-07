@@ -57,8 +57,38 @@ case "$(basename "$0")" in
     commit-msg)
         msg_file="$1"
         if [ -f "$msg_file" ]; then
-            result=$("$BINARY" --stdin < "$msg_file" 2>&1); rc=$?
-            act_on_rc "$rc" "$result" "the commit message"
+            # The commit verb checks the message against the staged diff
+            # (host-lint#28). Detect it from the captured no-argument usage banner
+            # (the binary has no --help flag) — probing by invocation is ambiguous
+            # (an older binary reads `commit` as a file name and exits 2), and a
+            # `grep -q` pipe can misreport a match when its early exit kills the
+            # writer under pipefail. </dev/null so no binary can wait on stdin.
+            help_out=$("$BINARY" 2>&1 </dev/null)
+            diff_file=""
+            case "$help_out" in
+                *"host-lint commit --message"*)
+                    diff_file="$(git rev-parse --git-dir)/host-lint-staged.diff"
+                    # A diff capture that fails degrades to --stdin below, and the
+                    # degraded run says what it did not check — never a silent
+                    # clean-as-if-checked.
+                    git diff --cached > "$diff_file" 2>/dev/null || diff_file=""
+                    ;;
+            esac
+            if [ -n "$diff_file" ]; then
+                result=$("$BINARY" commit --message "$msg_file" --diff "$diff_file" 2>&1); rc=$?
+                act_on_rc "$rc" "$result" "the commit message"
+                if [ "$rc" -eq 3 ]; then
+                    echo "re-run: \"$BINARY\" commit --message \"$msg_file\" --diff \"$diff_file\"" >&2
+                fi
+            else
+                result=$("$BINARY" --stdin < "$msg_file" 2>&1); rc=$?
+                act_on_rc "$rc" "$result" "the commit message"
+                if [ -z "$help_out" ] || [ "${help_out#*host-lint commit --message}" = "$help_out" ]; then
+                    echo "host-lint: duplication not checked (this binary predates the commit verb; reinstall the hook binary)" >&2
+                else
+                    echo "host-lint: duplication not checked (could not capture the staged diff)" >&2
+                fi
+            fi
         fi
         ;;
     *)

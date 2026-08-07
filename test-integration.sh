@@ -441,6 +441,50 @@ if [ -f "$HOOK_SCRIPT" ]; then
         && git add plan.md \
         && git -c user.name=t -c user.email=t@t commit -q -m "gitlink plus tell" 2>/dev/null) \
         && bad "hook: a tell alongside a gitlink must still block" || ok "hook: a tell alongside a gitlink still blocks"
+
+    # --- commit-msg dispatch: the verb path (host-lint#28) ---
+    # Installed as commit-msg only, so these cases isolate the message side.
+    crepo="$tmpdir/hook-commitmsg"
+    git init -q "$crepo"
+    cp "$HOOK_SCRIPT" "$crepo/.git/hooks/commit-msg"; cp "$BINARY_ABS" "$crepo/.git/hooks/host-lint"
+    chmod +x "$crepo/.git/hooks/commit-msg" "$crepo/.git/hooks/host-lint"
+    # a clean message over a clean staged change commits silently
+    printf 'fn a() {}\n' > "$crepo/a.rs"
+    (cd "$crepo" && git add a.rs && git -c user.name=t -c user.email=t@t commit -q -m "add the a helper") \
+        && ok "commit-msg: a clean message commits" || bad "commit-msg: a clean message should commit"
+    # a message restating a comment the commit adds: advisory — the commit lands,
+    # the warn names the safe direction, and the exact re-run line is printed
+    printf '// an upstream already set by an earlier run is kept exactly as found\nfn b() {}\n' > "$crepo/b.rs"
+    out=$(cd "$crepo" && git add b.rs && git -c user.name=t -c user.email=t@t commit -q \
+        -m "keep the earlier upstream
+
+an upstream already set by an earlier run is kept exactly as found" 2>&1) && rc=0 || rc=$?
+    { [ "$rc" -eq 0 ] && echo "$out" | grep -q "keep the comment" && echo "$out" | grep -q "re-run:"; } \
+        && ok "commit-msg: a restating message warns with the re-run line, commit lands" \
+        || bad "commit-msg: restating message should warn advisory with re-run line (rc=$rc: $out)"
+    # a flag-tier message through the verb path still blocks the commit
+    printf 'fn c() {}\n' > "$crepo/c.rs"
+    (cd "$crepo" && git add c.rs && git -c user.name=t -c user.email=t@t commit -q -m "Phase 1: add c" 2>/dev/null) \
+        && bad "commit-msg: a flagged message must still block through the verb" \
+        || ok "commit-msg: a flagged message still blocks through the verb"
+    # a binary predating the verb: the hook degrades to --stdin and says so
+    srepo="$tmpdir/hook-commitmsg-old"
+    git init -q "$srepo"
+    cp "$HOOK_SCRIPT" "$srepo/.git/hooks/commit-msg"
+    cat > "$srepo/.git/hooks/host-lint" <<'EOF'
+#!/bin/sh
+case "$1" in
+    --stdin) cat >/dev/null; exit 0 ;;
+    "") echo "Usage: host-lint [--stdin] [--prose] [--docs] [--json] [--all] [--log] [files...]" >&2; exit 2 ;;
+    *) exit 2 ;;
+esac
+EOF
+    chmod +x "$srepo/.git/hooks/commit-msg" "$srepo/.git/hooks/host-lint"
+    printf 'x\n' > "$srepo/x.txt"
+    out=$(cd "$srepo" && git add x.txt && git -c user.name=t -c user.email=t@t commit -q -m "add x" 2>&1) && rc=0 || rc=$?
+    { [ "$rc" -eq 0 ] && echo "$out" | grep -q "duplication not checked"; } \
+        && ok "commit-msg: an old binary degrades to --stdin and discloses" \
+        || bad "commit-msg: old-binary fallback must disclose (rc=$rc: $out)"
 else
     bad "hook: pre-commit script not found at $HOOK_SCRIPT"
 fi
@@ -800,6 +844,48 @@ if [ -f "$FFPACK" ] && [ -x "$FFPACK" ]; then
 else
     echo "  (pack binary absent; skipped)"
 fi
+
+# --- The commit verb: message + staged diff as named inputs (host-lint#28) ---
+echo ""
+echo "--- commit verb (message-restates-diff) ---"
+CVDIR=$(mktemp -d)
+cat > "$CVDIR/diff.txt" <<'EOF'
++++ b/src/main.rs
++/// An upstream already set, by hand or by an earlier run, is kept as found.
++fn ensure_upstream() {}
+EOF
+printf 'a materialized worktree tracks its branch\n\nAn upstream already set, by hand or by an earlier run, is kept as found.\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" --diff "$CVDIR/diff.txt" >/dev/null 2>"$CVDIR/err.txt" || rc=$?
+[ "$rc" -eq 3 ] && ok "restated comment sentence warns (rc=3)" || bad "restated comment sentence (want rc=3, got $rc)"
+grep -q "keep the comment" "$CVDIR/err.txt" && ok "warn names the safe direction" || bad "warn names the safe direction"
+
+printf 'a materialized worktree tracks its branch\n\nThe branch config now follows the remote wherever the store carries one.\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" --diff "$CVDIR/diff.txt" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "reworded body is clean (rc=0)" || bad "reworded body (want rc=0, got $rc)"
+
+printf 'An upstream already set, by hand or by an earlier run, is kept as found\n\nSets tracking on materialized worktrees.\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" --diff "$CVDIR/diff.txt" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "subject-line match is excluded (rc=0)" || bad "subject exclusion (want rc=0, got $rc)"
+
+cat > "$CVDIR/short.txt" <<'EOF'
++// The cache is dropped here.
+EOF
+printf 'subject\n\nThe cache is dropped here.\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" --diff "$CVDIR/short.txt" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "a short sentence stays under the bar (rc=0)" || bad "short sentence (want rc=0, got $rc)"
+
+printf 'subject\n\nA body with nothing restated in it at all.\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" >/dev/null 2>"$CVDIR/err.txt" || rc=$?
+[ "$rc" -eq 0 ] && ok "no --diff still verdicts the message (rc=0)" || bad "no --diff verdict (want rc=0, got $rc)"
+grep -q "not checked" "$CVDIR/err.txt" && ok "no --diff is disclosed, not silent" || bad "no --diff disclosure missing"
+
+printf 'fix — polish\n\nbody\n' > "$CVDIR/msg.txt"
+rc=0; $BINARY commit --message "$CVDIR/msg.txt" --diff "$CVDIR/diff.txt" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 1 ] && ok "subject decoration still blocks through the verb (rc=1)" || bad "subject decoration via verb (want rc=1, got $rc)"
+
+errs commit --message "$CVDIR/absent.txt"
+errs commit --message "$CVDIR/msg.txt" --diff "$CVDIR/absent-diff.txt"
+rm -rf "$CVDIR"
 
 echo "=== Results ==="
 echo "Passed: $PASS / $TOTAL"

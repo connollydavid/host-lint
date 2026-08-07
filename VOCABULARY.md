@@ -414,6 +414,26 @@ density is what escalates. Out of scope (needs semantics, not token-free, and so
 documented but not detected): one-point dilution, content duplication, invented
 concept labels, grandiose stakes, false vulnerability, dead-metaphor repetition.
 
+## 7. Commit-time duplication: the message restates the diff (advisory)
+
+`host-lint commit --message <file> [--diff <file>]` runs the commit-message checks
+and, given the diff, warns (`message-restates-diff`, exit 3) on any sentence of
+eight or more normalized words that appears both in a comment line the commit adds
+and in the message body. The warning names the fix direction: trim the sentence
+from the message; keep the comment.
+
+Boundaries: the subject line is never compared (a record commit's subject is the
+added record's title by convention); without `--diff` the message checks still
+verdict and the unrun duplication check is disclosed as a note. The threshold and
+the boundaries are calibrated against accepted history (host-lint#28).
+
+Out of scope: a precedent-as-defence detector ("N other projects already do this")
+matched nothing in the same history, so no rule ships and the shape is noted here
+so a later instance has a named home. Guidance the tool cannot check (a message
+answering an unraised point, or arguing rather than describing) lives in skill
+text labeled as unenforced, never in this file, which states what the tool
+enforces.
+
 ## Sources
 
 - tropes.fyi — token-free trope catalog (Ossama, ossama.is); itself AI-assisted, cited as the catalog, not as primary linguistics: https://tropes.fyi/tropes-md

@@ -1,10 +1,11 @@
 use host_lint::{
-    check_bare_numeral_header, check_code_label_prefix, check_label_prefix, check_line,
-    check_warn, check_warn_with_units, classify_line, gather_candidates,
+    added_comment_text, check_bare_numeral_header, check_code_label_prefix, check_label_prefix,
+    check_line, check_warn, check_warn_with_units, classify_line, gather_candidates,
     escalate_subject_decoration, is_numeral, is_spelled_ordinal, is_strict_directive, parse_jira_keys,
-    parse_lexicon_line, parse_unit_directive, path_ignored, scan_prose_text, scan_text,
-    scan_text_with_allow, scan_text_with_allow_strict, validate_lexicon_entry, LexiconEntry,
-    Severity, WARN_NOUNS,
+    parse_lexicon_line, parse_unit_directive, path_ignored, normalize_for_restate,
+    restated_comment_sentences, scan_prose_text, scan_text,
+    scan_text_with_allow, scan_text_with_allow_strict, split_sentences, validate_lexicon_entry,
+    LexiconEntry, Severity, WARN_NOUNS,
 };
 use proptest::prelude::*;
 use std::fs;
@@ -1634,4 +1635,59 @@ fn no_scope_declaring_strict_leaves_it_off() {
     lexicon_at(&inner, "inner phrase here\n");
 
     assert!(!host_lint::resolve_lexicon(&inner, &root).strict);
+}
+
+// === host-lint#28: the commit verb's duplication check, pure over two texts ===
+
+#[test]
+fn added_comment_shapes_gate_and_strip() {
+    assert_eq!(added_comment_text("+// a note").as_deref(), Some("a note"));
+    assert_eq!(added_comment_text("+/// doc line").as_deref(), Some("doc line"));
+    assert_eq!(added_comment_text("+//! crate doc").as_deref(), Some("crate doc"));
+    assert_eq!(added_comment_text("+# heading or shell").as_deref(), Some("heading or shell"));
+    assert_eq!(added_comment_text("+## deeper").as_deref(), Some("deeper"));
+    assert_eq!(added_comment_text("+/* block open").as_deref(), Some("block open"));
+    assert_eq!(added_comment_text("+ * continuation").as_deref(), Some("continuation"));
+    assert_eq!(added_comment_text("+-- lua or sql").as_deref(), Some("lua or sql"));
+    assert_eq!(added_comment_text("+<!-- html note").as_deref(), Some("html note"));
+    assert_eq!(added_comment_text("+let x = 1; // trailing"), None, "a code line is code, trailing comment or not");
+    assert_eq!(added_comment_text("+++ b/src/main.rs"), None, "the file header is not content");
+    assert_eq!(added_comment_text(" // context line"), None, "an unchanged line is not added");
+    assert_eq!(added_comment_text("+- list item"), None, "a single dash is a list, not a comment");
+    assert_eq!(added_comment_text("+--x"), None, "a double dash without its space is an expression");
+}
+
+#[test]
+fn restate_normalization_is_the_calibrated_form() {
+    assert_eq!(
+        normalize_for_restate("An upstream, `set` by-hand:  KEPT (as) found."),
+        "an upstream set by hand kept as found"
+    );
+    assert_eq!(normalize_for_restate("  .,;  "), "");
+}
+
+#[test]
+fn sentences_split_at_boundaries_not_inside_versions() {
+    assert_eq!(
+        split_sentences("One two. Three four! v3.5 stays whole. Wait... done, tail"),
+        vec!["One two", "Three four", "v3.5 stays whole", "Wait", "done, tail"]
+    );
+}
+
+#[test]
+fn a_restated_sentence_is_found_and_every_boundary_holds() {
+    let diff = "+++ b/f.rs\n+/// The upstream that was set by hand is kept exactly as it was found.\n+/// Short line here.\n+fn f() {}\n";
+    let body = "Explains itself.\n\nThe upstream that was set by hand is kept exactly as it was found.";
+    let hits = restated_comment_sentences(diff, body);
+    assert_eq!(hits.len(), 1, "the fourteen-word sentence matches; the three-word one is under the bar");
+    assert!(hits[0].starts_with("The upstream"));
+
+    let none = restated_comment_sentences(diff, "A different body with nothing repeated from the change at all.");
+    assert!(none.is_empty(), "no restatement, no finding");
+
+    let wrapped = "body where the upstream that was set by hand is kept\nexactly as it was found, wrapped";
+    assert_eq!(restated_comment_sentences(diff, wrapped).len(), 1, "wrapping does not hide a restatement");
+
+    let twice = format!("{diff}+// The upstream that was set by hand is kept exactly as it was found.\n");
+    assert_eq!(restated_comment_sentences(&twice, body).len(), 1, "the same sentence twice reports once");
 }
