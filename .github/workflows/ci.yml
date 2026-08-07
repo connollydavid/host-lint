@@ -164,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install allium-cli (pinned 3.4.2)
-        run: cargo install allium-cli --version 3.4.2
+        run: cargo install --locked allium-cli --version 3.4.2
       - name: allium check
         run: allium check host-lint.allium
       - name: allium analyse
@@ -181,7 +181,7 @@ jobs:
       - name: allium plan (ffmpeg pack)
         run: allium plan host-lint-ffmpeg/ffmpeg-pack.allium
       - name: Install host-lifecycle (pinned)
-        run: cargo install --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
+        run: cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
       - name: Lint obligations (dispositioned, exercises-linked, inputs not stale)
         # Offline gate: every obligation dispositioned + test/proof names present, every
         # test: carrying an `exercises=` link the named test actually references
@@ -205,9 +205,9 @@ jobs:
         # `obligations` derives the obligations via `allium plan`, so allium-cli is
         # needed here too (not only in the allium job).
         run: |
-          cargo install allium-cli --version 3.4.2
-          cargo install --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
-          cargo install --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
+          cargo install --locked allium-cli --version 3.4.2
+          cargo install --locked --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
+          cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
       - name: Discharge kani rungs by re-derivation (call/0018, #8)
         # The real discharge: re-run each kani: rung via host-prove and gate on PASS,
         # not name-presence. host-prove (on PATH) drives `cargo kani` per harness.
