@@ -728,8 +728,12 @@ pub fn classify_line_with_units(line: &str, markdown: bool, units: &[String]) ->
         // The shape rather than the vocabulary, so a noun-swap cannot evade the
         // lexical set (host-lint#24). Heading context only, where a bare
         // `<noun> <cardinal>` is a position label rather than ordinary prose.
+        // Warn, not flag: unlike the vocabulary rules, this shape admits genuine
+        // designators (`## Windows 11`), so an undeclared hit asks the author to
+        // confirm and declare it in the LEXICON; strict escalates it with that
+        // remedy, and a declared designator is masked before this runs.
         if let Some(t) = check_ordinal_scaffold_header(line) {
-            return Some((Severity::Flag, t));
+            return Some((Severity::Warn, t));
         }
     }
     if let Some(t) = check_warn_with_units(line, units) {

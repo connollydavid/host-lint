@@ -1519,6 +1519,39 @@ fn a_noun_swap_does_not_evade_the_ordinal_heading_rule() {
     assert!(f("####### Check 1").is_none(), "seven hashes is not a heading");
 }
 
+// The carve-out half of host-lint#24: the shape admits genuine designators the
+// vocabulary rules never collide with, so it reports advisory; a LEXICON
+// declaration masks a real designator, and strict escalates an undeclared one
+// to a flag whose remedy names the declaration command.
+#[test]
+fn an_ordinal_scaffold_heading_warns_and_the_lexicon_carves_out_designators() {
+    use host_lint::{classify_line, scan_text_with_allow_strict, Severity};
+    assert_eq!(classify_line("## Check 1", true).map(|(s, _)| s), Some(Severity::Warn));
+    assert_eq!(
+        classify_line("## Step 3", true).map(|(s, _)| s),
+        Some(Severity::Warn),
+        "a paragraph-tier advisory noun is not harder-judged for being a whole heading"
+    );
+
+    // A declared designator is masked before classification, strict or not.
+    let allow = vec!["windows 11".to_string()];
+    let mut m = Vec::new();
+    scan_text_with_allow_strict("## Windows 11\n", "cal.md", &allow, &[], true, &mut m);
+    assert!(m.is_empty(), "a declared designator heading is clean under strict");
+
+    // Undeclared under strict: escalated, and the remedy names the declaration.
+    let mut m = Vec::new();
+    scan_text_with_allow_strict("## Windows 11\n", "cal.md", &[], &[], true, &mut m);
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].severity, Severity::Flag);
+    assert!(m[0].cite.contains("lexicon add"), "cite was: {}", m[0].cite);
+
+    // Undeclared without strict: advisory, the author confirms and declares.
+    let mut m = Vec::new();
+    scan_text_with_allow_strict("## Windows 11\n", "cal.md", &[], &[], false, &mut m);
+    assert_eq!(m[0].severity, Severity::Warn);
+}
+
 // === LEXICON scopes: one repository can contain another ===============
 
 /// A scratch tree under `target/` (gitignored, so a stray directory never
