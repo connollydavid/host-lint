@@ -363,7 +363,7 @@ a verdict):
 |---|---|---|
 | `ai-diction` | delve, certainly, utilize, robust, streamline; `leverage` and `harness` as verbs only (`to leverage`, `leveraging`, `leverages`; `harness/harnesses/harnessing/harnessed the power` or `the potential`) | tropes.fyi: Delve and Friends |
 | `grandiose-noun` | tapestry, landscape, synergy | tropes.fyi: Tapestry and Landscape |
-| `house-diction` | realm, underscore, showcase, intricate, nuanced, multifaceted | this project, not in the tropes.fyi catalog (call/0051) |
+| `house-diction` | realm, underscore, showcase, intricate, nuanced, multifaceted | this project, not in the tropes.fyi catalog (call/0051); measured 2026-09-06 (plan/0087): zero genuine uses in the swept corpus, the rule inert, kept detecting on the measurement |
 | `magic-adverb` | deeply, fundamentally, remarkably, profoundly, crucially | tropes.fyi: intensifier inflation |
 | `serves-as` | serves as, stands as, represents a, acts as a | tropes.fyi: copula dodge |
 | `filler-transition` | it's worth noting, it bears mentioning, importantly, notably, needless to say | tropes.fyi: empty signpost |
