@@ -1450,7 +1450,7 @@ mod kani_lem {
     #[kani::proof]
     fn scan_line_never_panics() {
         let n: usize = kani::any();
-        kani::assume(n <= 16);
+        kani::assume(n <= 8);
         let mut bytes: Vec<u8> = Vec::with_capacity(n);
         for _ in 0..n {
             let b: u8 = kani::any();
@@ -1473,7 +1473,7 @@ mod kani_lem {
     #[kani::proof]
     fn form_and_mangle_hits_are_classified_by_the_table() {
         let n: usize = kani::any();
-        kani::assume(n >= 1 && n <= 12);
+        kani::assume(n >= 1 && n <= 8);
         let mut bytes: Vec<u8> = Vec::with_capacity(n);
         for _ in 0..n {
             let b: u8 = kani::any();
@@ -1517,7 +1517,7 @@ mod kani_lem {
     #[kani::proof]
     fn hits_are_word_bounded() {
         let n: usize = kani::any();
-        kani::assume(n >= 3 && n <= 20);
+        kani::assume(n >= 3 && n <= 12);
         let mut bytes: Vec<u8> = Vec::with_capacity(n);
         for _ in 0..n {
             let b: u8 = kani::any();

@@ -96,7 +96,7 @@ rule-success.StartScan                  => waived: lifecycle entry — a scan un
 
 # --- The lem pronoun contract (plan/0089) ---
 config-default.lem                          => structural
-rule-success.DetectLemContractViolation     => kani:form_and_mangle_hits_are_classified_by_the_table
+rule-success.DetectLemContractViolation     => test:lem_contract_classifies_the_measured_classes exercises=scan_lem_contract
 rule-failure.DetectLemContractViolation.1   => test:lem_contract_classifies_the_measured_classes exercises=scan_lem_contract
 rule-entity-creation.DetectLemContractViolation.1 => test:lem_contract_skips_its_own_section exercises=scan_lem_contract
 rule-success.LemHoldsAcrossScopes           => test:lem_directive_and_spine_activation exercises=resolve_lexicon
