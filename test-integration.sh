@@ -533,10 +533,11 @@ if [ -n "$PACK_SRC" ]; then
     cp "$BINARY_ABS" "$pdir/host-lint"
     cp "$PACK_SRC" "$pdir/host-lint-ffmpeg"
     chmod +x "$pdir/host-lint" "$pdir/host-lint-ffmpeg"
-    # Dispatched through the core the versions match, so the skeleton reaches
-    # its usage error (exit 2, no lanes yet), never a hollow clean exit.
+    # Dispatched through the core the versions match, so a bare lane name reaches
+    # the pack's own usage (exit 2), never a hollow clean exit. The pack grew
+    # lanes since this test was written, so the grep matches its usage line.
     out=$("$pdir/host-lint" pack ffmpeg 2>&1) && rc=0 || rc=$?
-    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'only `rules` is implemented'; } && ok "pack ffmpeg: an unimplemented lane is a usage error, never a clean verdict" || bad "pack ffmpeg: dispatch (rc=$rc: $out)"
+    { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'host-lint-ffmpeg <lane>'; } && ok "pack ffmpeg: a bare dispatch is a usage error, never a clean verdict" || bad "pack ffmpeg: dispatch (rc=$rc: $out)"
     # A skewed core version refuses to run (host-lint#23, strict handshake).
     out=$(HOST_LINT_VERSION=999.0.0 "$pdir/host-lint-ffmpeg" 2>&1) && rc=0 || rc=$?
     { [ "$rc" -eq 2 ] && echo "$out" | grep -q 'skew'; } && ok "pack ffmpeg: version skew refuses" || bad "pack ffmpeg: skew (rc=$rc: $out)"
@@ -625,7 +626,7 @@ ALLDIR=$FCDIR/repo
 mkdir -p "$ALLDIR"
 ( cd "$ALLDIR" && git init -q . && printf 'A clean heading\n' > kept.md && printf 'x\n' > gone.md \
   && git add -A && git -c user.email=t@t -c user.name=t commit -qm init && rm gone.md ) >/dev/null 2>&1
-( cd "$ALLDIR" && "$OLDPWD/$BINARY" --all >/dev/null 2>&1 ); rc=$?
+( cd "$ALLDIR" && "$BINARY" --all >/dev/null 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] && ok "--all skips a tracked-but-deleted file by verdict, not by error" \
                 || bad "--all fail-closed leak (want rc=0, got $rc)"
 
@@ -919,7 +920,7 @@ ABS_BINARY=$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")
 if [ -d "$WTDIR/wt" ]; then
     rc=0
     ( cd "$WTDIR/wt" && GIT_DIR="$WTDIR/store.git/worktrees/wt" \
-        sh -c 'git show ":fixtures/tells.md" | "$0" --stdin-as fixtures/tells.md' "$ABS_BINARY" ) \
+        sh -c 'git show ":fixtures/tells.md" | "$0" --stdin-as fixtures/tells.md' "$BINARY" ) \
         >/dev/null 2>&1 || rc=$?
     [ "$rc" -eq 0 ] && ok "relative worktree gitdir: .host-lintignore honored under GIT_DIR" \
                     || bad "relative worktree gitdir (want rc=0, got $rc): ignore list lost"
@@ -927,6 +928,39 @@ else
     bad "relative worktree gitdir: could not build the worktree fixture"
 fi
 rm -rf "$WTDIR"
+
+# --- The lem pronoun contract (plan/0089): spine-governed activation, -------
+# the measured classes, the section exclusion, the quoted-human escape.
+LEM_DIR=$(mktemp -d)
+printf 'the lem pronoun system governs this repo
+' > "$LEM_DIR/AGENTS.md"
+rc=0
+( cd "$LEM_DIR" && printf 'whenever lemua says go
+' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
+[ "$rc" -eq 1 ] && ok "lem: spine marker activates; the mangle flags"                 || bad "lem: spine activation (want rc=1, got $rc)"
+rc=0
+( cd "$LEM_DIR" && printf 'L have gone ahead. Say go again whenever you are ready.
+' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
+[ "$rc" -eq 0 ] && ok "lem: correct speech stays clean"                 || bad "lem: correct speech (want rc=0, got $rc)"
+rc=0
+( cd "$LEM_DIR" && printf 'L has checked the receipt
+' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
+[ "$rc" -eq 1 ] && ok "lem: singular agreement flags"                 || bad "lem: agreement (want rc=1, got $rc)"
+rc=0
+printf '# Manual
+
+## The `lem` Pronoun System
+
+- operator: lemu, go ahead.
+  model: L have gone ahead.
+
+## Next
+
+- model: lemu will proceed whenever you say go.
+' > "$LEM_DIR/manual.md"
+( cd "$LEM_DIR" && "$BINARY" manual.md > lem-out.txt 2>&1 ) || rc=$?
+grep -q "lem-form" "$LEM_DIR/lem-out.txt" && ! grep -q "operator: lemu" "$LEM_DIR/lem-out.txt"     && ok "lem: the doctrine section is excluded from its own scan"     || bad "lem: section exclusion"
+rm -rf "$LEM_DIR"
 
 echo "=== Results ==="
 echo "Passed: $PASS / $TOTAL"

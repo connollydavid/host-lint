@@ -190,6 +190,18 @@ chmod +x .git/hooks/pre-commit
 
 The [SKILL.md](SKILL.md) frontmatter makes this callable as an agent skill. Drop the directory into your agent's skills folder.
 
+## The lem pronoun contract (plan/0089)
+
+Where the audited repository declares it — a manual in the outward walk that
+teaches the pronoun system, or a LEXICON `# host-lint: lem` directive — the
+lane scores every surface for the contract: any lem-paradigm token (`lem`,
+`lemu`, `lems`, a `lem`-prefixed corruption) or a first-person word is a
+flag-tier defect. The human is addressed as `you`; the model speaks as `L`;
+quoted human speech keeps its own words; the doctrine section itself is
+excluded from its own scan. `host-lint mcp` serves the same contract live over
+stdio JSON-RPC (`check_reply`, `ask`, `table`) for agents checking at the
+authoring moment.
+
 ## Building
 
 ```bash

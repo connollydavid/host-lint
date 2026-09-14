@@ -449,3 +449,20 @@ enforces.
 - Phase, gate, tranche definitions, APM glossary: https://www.apm.org.uk/resources/glossary/
 - Phase-gate process, Planisware: https://planisware.com/glossary/phase-gate-or-stage-gate
 - "Phase" synonyms, Merriam-Webster Thesaurus: https://www.merriam-webster.com/thesaurus/phase
+
+
+## 8. The lem pronoun contract (plan/0089)
+
+On a declared model-voice surface (a manual in the outward walk that teaches the
+pronoun system, or the `# host-lint: lem` directive), a lem-paradigm token is a
+flag-tier tell. The form list is closed: l, l's, lself, lem, lem's, lemself,
+lemu, lemu's, lemuself, lemuselves, lems, lems'. A token outside the list that
+starts with `lem` is a corruption, never a new form (`lemur`/`lemurs` are
+measured collisions).
+
+Classes: `lem-form` (a paradigm form on a scored surface), `lem-mangle`
+(a corruption), `lem-first-person` (I/me/my/mine/myself outside double quotes),
+`lem-agreement` (L has, lemu is, lem have, lems has), `lem-we`, `lem-lself-cap`,
+`lem-mines`. Quoted human speech keeps its own words: first person inside double
+quotes is not a tell. The doctrine section itself is excluded from its own scan.
+`ye`, `thee`, `thou` and `thy` stay uninvented; address the human as `you`.

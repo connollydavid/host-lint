@@ -4,7 +4,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 
-use host_lint::{Corpus, Match, LexiconEntry, LexiconScopes, Severity, load_lexicon, normalize_for_restate, restated_comment_sentences, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
+use host_lint::{Corpus, Match, LexiconEntry, LexiconScopes, Severity, load_lexicon, scan_lem_contract, normalize_for_restate, restated_comment_sentences, run_docs, scan_text_with_allow_strict, scan_prose_text, escalate_subject_decoration, is_ci_file, is_scannable, path_ignored, parse_lexicon_line, is_strict_directive, parse_jira_keys, validate_lexicon_entry, output_text, output_json};
 
 const LEXICON_FILE: &str = "LEXICON";
 const IGNORE_FILE: &str = ".host-lintignore";
@@ -789,7 +789,6 @@ fn run_mcp() -> ! {
                     .and_then(|x| x.as_str())
                     .unwrap_or("")
                     .to_string();
-                let empty = serde_json::Map::new();
                 let empty = serde_json::Value::Null;
                 let targs = params.get("arguments").unwrap_or(&empty);
                 match mcp_tool_call(&name, targs) {

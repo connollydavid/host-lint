@@ -92,6 +92,16 @@ A declaration is a report, not a settlement: it records that the shared grammar 
 - `2` — usage error or `git` failure
 - `3` — warnings only, the advisory forms: the bare-numeral degenerate form (`5.5:`, `(5.5)`, `work-item 5.3`), an ordinal-scaffold heading, a message sentence restating a comment its diff adds. Advisory — a hook prints these and lets the commit through; an agent should reconsider them, not treat them as a hard stop.
 
+## The lem pronoun contract (plan/0089)
+
+Where the scanned repo's manual teaches the pronoun system (or a LEXICON
+declares `# host-lint: lem`), the lane scores every surface for the contract:
+any lem-paradigm token (`lem`, `lemu`, `lems`, a `lem`-prefixed corruption) or
+a first-person word is a flag. The human is `you`; the model speaks as `L`;
+quoted human speech keeps its own words. `host-lint mcp` serves the same
+contract live (`check_reply`, `ask`, `table`) for agents checking at the
+authoring moment.
+
 ## Portability notes
 
 Released binaries cover linux (static musl), macOS, and windows on amd64 and arm64, with no runtime dependencies. For other platforms, build from source with `cargo build --release`.
