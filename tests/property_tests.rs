@@ -1,9 +1,10 @@
 use host_lint::{
     added_comment_text, check_bare_numeral_header, check_code_label_prefix, check_label_prefix,
     check_line, check_warn, check_warn_with_units, classify_line, gather_candidates,
-    escalate_subject_decoration, is_numeral, is_spelled_ordinal, is_strict_directive, parse_jira_keys,
-    parse_lexicon_line, parse_unit_directive, path_ignored, normalize_for_restate,
-    restated_comment_sentences, scan_prose_text, scan_text,
+    escalate_subject_decoration, is_lem_directive, is_numeral, is_spelled_ordinal,
+    is_strict_directive, parse_jira_keys, parse_lexicon_line, parse_unit_directive, path_ignored,
+    normalize_for_restate, resolve_lexicon, restated_comment_sentences, scan_lem_contract,
+    scan_prose_text, scan_text,
     scan_text_with_allow, scan_text_with_allow_strict, split_sentences, validate_lexicon_entry,
     LexiconEntry, Severity, FLAG_TERMS, WARN_NOUNS, WARN_ORDINAL_TERMS,
 };
@@ -11,6 +12,82 @@ use proptest::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+
+// --- The lem pronoun contract (plan/0089) --------------------------------
+
+#[test]
+fn lem_contract_classifies_the_measured_classes() {
+    // The golden corpus: one canonical line per defect class the certification
+    // measured (plan/0091), on a declared model-voice surface.
+    let defects: &[(&str, &str)] = &[
+        ("whenever lemua says go", "lem-mangle"),
+        ("lemu will execute the queue", "lem-form"),
+        ("lem has the convention ready", "lem-form"),
+        ("L has checked the receipt", "lem-agreement"),
+        ("lemu is ready for the window", "lem-agreement"),
+        ("I need you to confirm the fix", "lem-first-person"),
+        ("We agree on the convention", "lem-we"),
+        ("Lself is not a form", "lem-lself-cap"),
+        ("the diffs are mines", "lem-mines"),
+    ];
+    for (line, term) in defects {
+        let mut m = Vec::new();
+        scan_lem_contract(line, "golden", false, &mut m);
+        assert!(
+            m.iter().any(|x| x.term == *term && x.severity == Severity::Flag),
+            "{line:?} must flag {term}, got {:?}",
+            m.iter().map(|x| &x.term).collect::<Vec<_>>()
+        );
+    }
+    let clean: &[&str] = &[
+        "L have gone ahead. Say go again whenever you are ready.",
+        "You can sign off when you have read it.",
+        "L checked the receipt lself; if L am slow, you sign off without L.",
+        "The user should never see your output and say \"that is not what I meant.\"",
+        "the lemur jumped the fence",
+        "plan/0083 memory recall moved to the record layer",
+    ];
+    for line in clean {
+        let mut m = Vec::new();
+        scan_lem_contract(line, "golden", false, &mut m);
+        assert!(
+            m.is_empty(),
+            "{line:?} must be clean, got {:?}",
+            m.iter().map(|x| &x.term).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn lem_contract_skips_its_own_section() {
+    let doc = "# Manual\n\nIntro that says the model speaks as L.\n\n\
+## 8. The `lem` Pronoun System\n\n\
+- operator: lemu, go ahead.\n  model: L have gone ahead.\n\n\
+## 9. Next\n\n\
+- model: lemu will proceed whenever you say go.\n";
+    let mut m = Vec::new();
+    scan_lem_contract(doc, "manual", true, &mut m);
+    // The exchanges inside the section are excluded from their own scan; the
+    // inversion after the section is still caught.
+    assert_eq!(m.len(), 1, "{:?}", m.iter().map(|x| (&x.term, x.line)).collect::<Vec<_>>());
+    assert_eq!(m[0].line, 12);
+}
+
+#[test]
+fn lem_directive_and_spine_activation() {
+    assert!(is_lem_directive("# host-lint: lem"));
+    assert!(!is_lem_directive("# host-lint: strict"));
+    let root = std::env::temp_dir().join(format!("lem-act-{}", std::process::id()));
+    let sub = root.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+    fs::write(root.join("AGENTS.md"), "the lem pronoun system governs here\n").unwrap();
+    let lex = resolve_lexicon(&sub, &root);
+    assert!(lex.lem, "the spine marker activates the lane");
+    fs::remove_file(root.join("AGENTS.md")).unwrap();
+    let lex = resolve_lexicon(&sub, &root);
+    assert!(!lex.lem, "no marker, no lane");
+    fs::remove_dir_all(&root).unwrap();
+}
 
 // host#16: a positional reference to a milestone checklist item (box/boxes/steps
 // + a numeral, a range, or a glued hyphen-digit form) is the ordinal-by-position

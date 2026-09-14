@@ -145,6 +145,7 @@ version = "0.20.0"
 dependencies = [
  "host-grammar",
  "proptest",
+ "serde_json",
 ]
 
 [[package]]

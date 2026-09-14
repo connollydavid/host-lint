@@ -20,6 +20,11 @@ default-members = [".", "host-lint-ffmpeg"]
 [dependencies]
 host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "b9cace10c07b1e6316f835d21b131be9d5a07c01" }
 
+# The MCP mode speaks newline-delimited JSON-RPC; the protocol surface is the
+# one place the engine parses untrusted JSON, so it rides a maintained parser
+# rather than a hand-rolled scan (plan/0089).
+serde_json = "1"
+
 # `cargo kani` sets cfg(kani) for the #[cfg(kani)] proof harnesses in src/lib.rs.
 # Declare it a known cfg so the normal build doesn't warn. Lints don't affect
 # codegen, so the release artifact stays byte-identical. The canonical artifact is

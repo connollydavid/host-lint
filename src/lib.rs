@@ -823,6 +823,16 @@ pub fn is_root_directive(line: &str) -> bool {
         .is_some_and(|r| r.trim() == "host-lint: root")
 }
 
+/// The `lem` directive: this scope declares the lem pronoun contract active —
+/// every surface in it is a model-voice surface, so a paradigm token is a
+/// defect. The spine marker (a manual that teaches the pronoun system) turns
+/// the lane on without a directive; this is the explicit override (plan/0089).
+pub fn is_lem_directive(line: &str) -> bool {
+    line.trim()
+        .strip_prefix('#')
+        .is_some_and(|r| r.trim() == "host-lint: lem")
+}
+
 /// Parse one LEXICON line into an entry, or `None` for a blank, comment, or
 /// directive line. A comment is `#` followed by a non-digit (so `# note` and
 /// `## heading` are comments, but `#7 …` is a hash-number entry — this is what
@@ -1019,6 +1029,25 @@ pub struct Lexicon {
     /// This file declared `host-lint: root`, so a search that reached it stops
     /// rather than continuing into an enclosing repository.
     pub is_root: bool,
+    /// The lem pronoun contract is active in this scope: the LEXICON declared
+    /// `host-lint: lem`, or a manual in the walk teaches the pronoun system
+    /// (the spine marker — plan/0089).
+    pub lem: bool,
+}
+
+/// The spine marker: a manual in `dir` that teaches the pronoun system
+/// declares every surface under it a model-voice surface (plan/0089). The
+/// greppable contract: "pronoun system" and "lem", case-insensitive.
+fn spine_marker_active(dir: &Path) -> bool {
+    for man in ["AGENTS.md", "CLAUDE.md"] {
+        if let Ok(s) = fs::read_to_string(dir.join(man)) {
+            let low = s.to_lowercase();
+            if low.contains("pronoun system") && low.contains("lem") {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Read and validate the repo's `LEXICON` file (at `root`). An invalid entry — a master
@@ -1028,21 +1057,26 @@ pub struct Lexicon {
 /// loader both the CLI and an embedder call, so the prose/`--docs` lane masks the same
 /// declared phrases everywhere.
 pub fn load_lexicon(root: &Path) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new(), is_root: false };
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new(), is_root: false, lem: false };
     if root.as_os_str().is_empty() {
         return lex;
+    }
+    if spine_marker_active(root) {
+        lex.lem = true;
     }
     let content = match fs::read_to_string(root.join("LEXICON")) {
         Ok(c) => c,
         Err(_) => return lex,
     };
-    // Directives first (strict, jira-key, unit), collected before any entry so an
+    // Directives first (strict, jira-key, unit, lem), collected before any entry so an
     // entry's validation sees every declared key regardless of line order.
     for line in content.lines() {
         if is_strict_directive(line) {
             lex.strict = true;
         } else if is_root_directive(line) {
             lex.is_root = true;
+        } else if is_lem_directive(line) {
+            lex.lem = true;
         } else if let Some(keys) = parse_jira_keys(line) {
             lex.jira_keys.extend(keys);
         } else if let Some(u) = parse_unit_directive(line) {
@@ -1053,6 +1087,7 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
     for line in content.lines() {
         if is_strict_directive(line)
             || is_root_directive(line)
+            || is_lem_directive(line)
             || parse_jira_keys(line).is_some()
             || parse_unit_directive(line).is_some()
         {
@@ -1094,6 +1129,7 @@ pub fn resolve_lexicon(dir: &Path, stop_at: &Path) -> Lexicon {
         units: Vec::new(),
         entries: Vec::new(),
         is_root: false,
+        lem: false,
     };
     let mut here = Some(dir.to_path_buf());
     while let Some(d) = here {
@@ -1104,9 +1140,25 @@ pub fn resolve_lexicon(dir: &Path, stop_at: &Path) -> Lexicon {
             merged.units.extend(lex.units);
             merged.entries.extend(lex.entries);
             merged.strict |= lex.strict;
+            merged.lem |= lex.lem;
             if lex.is_root {
                 merged.is_root = true;
                 break;
+            }
+        }
+        // The spine marker: a manual in this directory that teaches the pronoun
+        // system declares every surface under it a model-voice surface, so the
+        // lem contract is active here whether or not a LEXICON says so
+        // (plan/0089). Checked on the walk, not after, so `root` still bounds it.
+        if !merged.lem {
+            for man in ["AGENTS.md", "CLAUDE.md"] {
+                if let Ok(manual) = fs::read_to_string(d.join(man)) {
+                    let low = manual.to_lowercase();
+                    if low.contains("pronoun system") && low.contains("lem") {
+                        merged.lem = true;
+                        break;
+                    }
+                }
             }
         }
         // `stop_at` bounds the walk so a scan never reads a LEXICON from outside
@@ -1154,6 +1206,343 @@ impl LexiconScopes {
     }
 }
 
+
+// --- The lem pronoun contract (plan/0089) --------------------------------------------
+//
+// On a declared model-voice surface, any lem-paradigm token is a defect. That is
+// the strict-surface surrogate, and it is all the lane claims: whether a token
+// addresses a human is pragmatics, undecidable from strings; the declaration of
+// the surface carries the semantics. The convention is the wire gate's, certified
+// in plan/0091 (n = 600 at the served maximum context, zero final violations).
+//
+// Activation is spine-governed: the outward lexicon walk marks a scope active
+// when an AGENTS.md or CLAUDE.md in it teaches the pronoun system (the greppable
+// marker), and a LEXICON may force it with `# host-lint: lem`. A repository whose
+// manual predates the system never sees the lane.
+//
+// The paradigm is ASCII by definition; a word is [A-Za-z0-9'_] between non-word
+// characters. The doctrine section that defines these forms is excluded from its
+// own scan — self-referential text is excluded, not bypassed: in markdown, once
+// a `lem` pronoun-system heading is seen, lines are held until a heading of the
+// same or higher level ends the section.
+
+/// The closed paradigm: every form that exists. A lem-token outside this list
+/// is a corruption, and the lane says so rather than guessing at intent.
+pub const LEM_CANONICAL: &[&str] = &[
+    "l", "l's", "lself", "lem", "lem's", "lemself", "lemu", "lemu's",
+    "lemuself", "lemuselves", "lems", "lems'",
+];
+
+/// English words that begin with "lem" and are not ours. Measured collisions
+/// only; extend on a real one, never on a reading (plan/0087's discipline).
+pub const LEM_WHITELIST: &[&str] = &["lemur", "lemurs"];
+
+/// The paradigm oracle: (slot, case, plural) -> form. `subagents` is the
+/// plural row — addressed as `lemu` (one form for one or many), discussed as
+/// `lems`. The oracle is the `ask` half of the MCP mode and the definition the
+/// lane tests the section's form list against.
+pub fn lem_form(slot: &str, case: &str, plural: bool) -> Option<&'static str> {
+    match (slot, case, plural) {
+        ("speak", "subject", _) => Some("L"),
+        ("speak", "object", _) => Some("L"),
+        ("speak", "possessive", _) => Some("L's"),
+        ("speak", "reflexive", _) => Some("lself"),
+        ("address", "subject", _) => Some("lemu"),
+        ("address", "object", _) => Some("lemu"),
+        ("address", "possessive", _) => Some("lemu's"),
+        ("address", "reflexive", false) => Some("lemuself"),
+        ("address", "reflexive", true) => Some("lemuselves"),
+        ("discuss", "subject", _) => Some("lem"),
+        ("discuss", "object", _) => Some("lem"),
+        ("discuss", "possessive", _) => Some("lem's"),
+        ("discuss", "reflexive", _) => Some("lemself"),
+        ("subagents", "subject", _) => Some("lems"),
+        ("subagents", "object", _) => Some("lems"),
+        ("subagents", "possessive", _) => Some("lems'"),
+        ("subagents", "reflexive", _) => Some("lemselves"),
+        _ => None,
+    }
+}
+
+fn is_lem_word_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'\'' || b == b'_'
+}
+
+/// The heading that opens the doctrine section, in either spelling the two
+/// manuals carry.
+fn is_lem_section_heading(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("pronoun system") && lower.contains("lem")
+}
+
+fn is_first_person_word(lower_word: &str) -> bool {
+    matches!(lower_word, "i" | "me" | "my" | "mine" | "myself")
+}
+
+fn canonical_lem_word(lower: &str) -> bool {
+    LEM_CANONICAL.contains(&lower)
+}
+
+/// The classes the contract flags on a scored surface. `L` and `l` alone are
+/// never defects — they are the required form; their verb is judged only by
+/// the agreement scan.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LemKind {
+    Form,
+    Mangle,
+    FirstPerson,
+    Agreement,
+    We,
+    LselfCap,
+    Mines,
+}
+
+fn lem_term(kind: LemKind) -> &'static str {
+    match kind {
+        LemKind::Form => "lem-form",
+        LemKind::Mangle => "lem-mangle",
+        LemKind::FirstPerson => "lem-first-person",
+        LemKind::Agreement => "lem-agreement",
+        LemKind::We => "lem-we",
+        LemKind::LselfCap => "lem-lself-cap",
+        LemKind::Mines => "lem-mines",
+    }
+}
+
+/// One defect: the byte offset of the offending word, its text, and its class.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LemHit {
+    pub off: usize,
+    pub word: String,
+    pub kind: LemKind,
+}
+
+/// Scan one line of a declared model-voice surface. Offsets are byte offsets
+/// into `line`. The matchers are hand-rolled ASCII scans so the Kani proofs
+/// run on this code, not on a regex engine.
+///
+/// Quoted speech is the human's voice even on a model-voice surface (the
+/// doctrine's nested-speech rule), so a first-person token inside double
+/// quotes is not a defect. lem-forms stay strict everywhere: nothing in a
+/// model's reply legitimately names a model in the paradigm.
+pub fn scan_lem_line(line: &str) -> Vec<LemHit> {
+    let mut hits: Vec<LemHit> = Vec::new();
+    let b = line.as_bytes();
+    let mut i = 0usize;
+    let mut in_quote = false;
+    while i < b.len() {
+        if b[i] == b'"' {
+            in_quote = !in_quote;
+            i += 1;
+            continue;
+        }
+        if !is_lem_word_char(b[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let quoted = in_quote;
+        while i < b.len() && is_lem_word_char(b[i]) {
+            i += 1;
+        }
+        let word = &line[start..i];
+        let lower = word.to_ascii_lowercase();
+        if word == "We" {
+            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::We });
+        }
+        if word == "Lself" {
+            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::LselfCap });
+        }
+        if lower == "mines" {
+            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Mines });
+        }
+        if !quoted && is_first_person_word(&lower) {
+            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::FirstPerson });
+        }
+        if lower.starts_with("lem") && !LEM_WHITELIST.contains(&lower.as_str()) {
+            if !LEM_CANONICAL.contains(&lower.as_str()) {
+                hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Mangle });
+            } else if lower != "l" {
+                // A paradigm form on a scored surface is an inversion: the model
+                // speaking spends `L`, and `lemu`/`lem`/`lems` name models only.
+                hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Form });
+            }
+        }
+        // Agreement: for a paradigm subject, the next word judges the verb.
+        // Bare `L` is judged here too — `L has` is the singular-agreement slip.
+        if lower == "l"
+            || (canonical_lem_word(&lower) && lower != "l")
+        {
+            let mut j = i;
+            while j < b.len() && (b[j] == b' ' || b[j] == b'\t') {
+                j += 1;
+            }
+            let vs = j;
+            while j < b.len() && is_lem_word_char(b[j]) {
+                j += 1;
+            }
+            if vs < j {
+                let verb = line[vs..j].to_ascii_lowercase();
+                let bad = match lower.as_str() {
+                    "l" => matches!(verb.as_str(), "has" | "is" | "was" | "does"),
+                    "lem" => verb == "have",
+                    "lems" => matches!(verb.as_str(), "has" | "is" | "was"),
+                    "lemu" => matches!(verb.as_str(), "is" | "was" | "does" | "has"),
+                    _ => false,
+                };
+                if bad {
+                    hits.push(LemHit {
+                        off: start,
+                        word: word.to_string(),
+                        kind: LemKind::Agreement,
+                    });
+                }
+            }
+        }
+    }
+    hits
+}
+
+/// Scan a whole document of a declared model-voice surface. In markdown, the
+/// section that defines the contract is excluded from its own scan: once a
+/// `lem` pronoun-system heading is seen, lines are held until a heading of the
+/// same or higher level ends the section. Pushes one Flag per defect.
+pub fn scan_lem_contract(input: &str, source: &str, markdown: bool, matches: &mut Vec<Match>) {
+    let mut in_section = false;
+    let mut section_level = 2usize;
+    for (idx, line) in input.lines().enumerate() {
+        if markdown && is_lem_section_heading(line) {
+            in_section = true;
+            section_level = line.chars().take_while(|c| *c == '#').count().max(1);
+            continue;
+        }
+        if markdown && in_section {
+            let hashes = line.chars().take_while(|c| *c == '#').count();
+            let is_heading = hashes >= 1 && line.chars().nth(hashes) != Some('#');
+            if is_heading && hashes <= section_level {
+                in_section = false;
+            } else {
+                continue;
+            }
+        }
+        for h in scan_lem_line(line) {
+            matches.push(Match {
+                file: source.to_string(),
+                line: idx + 1,
+                col: h.off + 1,
+                text: line.trim().to_string(),
+                term: lem_term(h.kind).to_string(),
+                severity: Severity::Flag,
+                cite: "the lem pronoun contract: the human is you, the model speaks as L (plan/0089)"
+                    .to_string(),
+            });
+        }
+    }
+}
+
+#[cfg(kani)]
+mod kani_lem {
+    use super::*;
+
+    /// No input, however hostile, panics the matchers. The generator is
+    /// restricted to the scanner's own alphabet (quotes, spaces, separators,
+    /// word chars) — the characters a reply is actually made of.
+    #[kani::proof]
+    fn scan_line_never_panics() {
+        let n: usize = kani::any();
+        kani::assume(n <= 16);
+        let mut bytes: Vec<u8> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let b: u8 = kani::any();
+            kani::assume(
+                b == b'"'
+                    || b == b' '
+                    || b == b'\t'
+                    || b == b'.'
+                    || b == b','
+                    || is_lem_word_char(b),
+            );
+            bytes.push(b);
+        }
+        let s = std::str::from_utf8(&bytes).unwrap();
+        let _ = scan_lem_line(s);
+    }
+
+    /// Soundness: every Form hit is a canonical form; every Mangle hit starts
+    /// with "lem", is not canonical, and is not a whitelisted English word.
+    #[kani::proof]
+    fn form_and_mangle_hits_are_classified_by_the_table() {
+        let n: usize = kani::any();
+        kani::assume(n >= 1 && n <= 12);
+        let mut bytes: Vec<u8> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let b: u8 = kani::any();
+            kani::assume(b.is_ascii_alphanumeric() || b == b'\'');
+            bytes.push(b);
+        }
+        let s = std::str::from_utf8(&bytes).unwrap();
+        for h in scan_lem_line(s) {
+            let lower = h.word.to_ascii_lowercase();
+            match h.kind {
+                LemKind::Form => {
+                    kani::assert(
+                        LEM_CANONICAL.contains(&lower.as_str()) && lower != "l",
+                        "a Form hit is a canonical form other than bare `l`",
+                    );
+                }
+                LemKind::Mangle => {
+                    kani::assert(lower.starts_with("lem"), "a Mangle hit starts with lem");
+                    kani::assert(
+                        !LEM_CANONICAL.contains(&lower.as_str()),
+                        "a Mangle hit is not canonical",
+                    );
+                    kani::assert(
+                        !LEM_WHITELIST.contains(&lower.as_str()),
+                        "a Mangle hit is not whitelisted",
+                    );
+                }
+                LemKind::FirstPerson => {
+                    kani::assert(
+                        is_first_person_word(&lower),
+                        "a FirstPerson hit is a first-person word",
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Hits are word-bounded: a hit's last character ends a word (the next
+    /// byte is not a word char) whenever the word does not end the line.
+    #[kani::proof]
+    fn hits_are_word_bounded() {
+        let n: usize = kani::any();
+        kani::assume(n >= 3 && n <= 20);
+        let mut bytes: Vec<u8> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let b: u8 = kani::any();
+            kani::assume(
+                b == b'"'
+                    || b == b' '
+                    || b == b'\t'
+                    || b == b'.'
+                    || is_lem_word_char(b),
+            );
+            bytes.push(b);
+        }
+        let s = std::str::from_utf8(&bytes).unwrap();
+        let sb = s.as_bytes();
+        for h in scan_lem_line(s) {
+            let end = h.off + h.word.len();
+            if end < sb.len() {
+                kani::assert(
+                    !is_lem_word_char(sb[end]),
+                    "a hit ends on a word boundary",
+                );
+            }
+        }
+    }
+}
 
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     scan_text_with_allow(input, source, &[], matches);
@@ -1672,7 +2061,10 @@ pub fn run_docs(
                 // a vendored repository is read against that repository's lexicon
                 // rather than this one's (host-lint#26).
                 let lex = scopes.for_file(&path);
-                scan_prose_text(&content, rel, &lex.phrases_lc, &mut scan.matches)
+                scan_prose_text(&content, rel, &lex.phrases_lc, &mut scan.matches);
+                if lex.lem {
+                    scan_lem_contract(&content, rel, true, &mut scan.matches)
+                }
             }
             Err(_) => scan.unread.push(rel.clone()),
         }

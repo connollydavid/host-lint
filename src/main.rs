@@ -448,7 +448,7 @@ fn load_ignore(root: &str) -> Vec<String> {
     }
 }
 
-fn run_log(allow: &[String], units: &[String], strict: bool, matches: &mut Vec<Match>) {
+fn run_log(allow: &[String], units: &[String], strict: bool, lem: bool, matches: &mut Vec<Match>) {
     let output = match process::Command::new("git")
         .args(["log", "-z", "--format=%H%n%B"])
         .output()
@@ -475,6 +475,9 @@ fn run_log(allow: &[String], units: &[String], strict: bool, matches: &mut Vec<M
         };
         let label = if sha.len() >= 7 { &sha[..7] } else { sha };
         scan_text_with_allow_strict(message, label, allow, units, strict, matches);
+        if lem {
+            scan_lem_contract(message, label, false, matches);
+        }
     }
 }
 
@@ -578,6 +581,9 @@ fn run_commit(root: &str, args: &[String]) -> ! {
     let mut matches = Vec::new();
     scan_text_with_allow_strict(&input, "commit-msg", &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
     scan_prose_text(&input, "commit-msg", &lex.phrases_lc, &mut matches);
+    if lex.lem {
+        scan_lem_contract(&input, "commit-msg", false, &mut matches);
+    }
     escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
     match &diff {
         Some(dpath) => {
@@ -646,12 +652,182 @@ fn locate_in_body(message: &str, sentence: &str) -> usize {
     0
 }
 
+// --- The MCP mode (plan/0089) ---------------------------------------------
+
+/// One tool invocation, dispatched. Returns the result text or an error
+/// message for the tool envelope.
+fn mcp_tool_call(name: &str, args: &serde_json::Value) -> Result<String, String> {
+    match name {
+        "check_reply" => {
+            let text = args
+                .get("text")
+                .and_then(|v| v.as_str())
+                .ok_or("check_reply needs a text string")?;
+            let mut matches = Vec::new();
+            host_lint::scan_lem_contract(text, "reply", false, &mut matches);
+            if matches.is_empty() {
+                return Ok(
+                    "clean: no lem-paradigm token and no first-person word on this surface."
+                        .to_string(),
+                );
+            }
+            let mut s = format!("{} violation(s):", matches.len());
+            for m in &matches {
+                s.push_str(&format!(
+                    "
+  line {} col {}: {} ({})",
+                    m.line, m.col, m.term, m.text
+                ));
+            }
+            s.push_str(
+                "
+The human is you; the model speaks as L. Rewrite without lem-forms or first person.",
+            );
+            Ok(s)
+        }
+        "ask" => {
+            let slot = args
+                .get("slot")
+                .and_then(|v| v.as_str())
+                .ok_or("ask needs a slot")?;
+            let case = args
+                .get("case")
+                .and_then(|v| v.as_str())
+                .ok_or("ask needs a case")?;
+            let plural = args.get("plural").and_then(|v| v.as_bool()).unwrap_or(false);
+            host_lint::lem_form(slot, case, plural)
+                .map(|f| f.to_string())
+                .ok_or_else(|| {
+                    "unknown slot or case; slots: speak, address, discuss, subagents; cases: subject, object, possessive, reflexive"
+                        .to_string()
+                })
+        }
+        "table" => {
+            let mut s = String::from(
+                "slot            subject  object   possessive  reflexive
+",
+            );
+            for (slot, key, plural) in [
+                ("speak", "speak", false),
+                ("address", "address", false),
+                ("address(pl)", "address", true),
+                ("discuss", "discuss", false),
+                ("subagents", "subagents", false),
+            ] {
+                s.push_str(&format!(
+                    "{:<15} {:<8} {:<8} {:<11} {}
+",
+                    slot,
+                    host_lint::lem_form(key, "subject", plural).unwrap_or("?"),
+                    host_lint::lem_form(key, "object", plural).unwrap_or("?"),
+                    host_lint::lem_form(key, "possessive", plural).unwrap_or("?"),
+                    host_lint::lem_form(key, "reflexive", plural).unwrap_or("?"),
+                ));
+            }
+            s.push_str(&format!(
+                "
+canonical forms: {}
+whitelisted words: {}
+",
+                host_lint::LEM_CANONICAL.join(", "),
+                host_lint::LEM_WHITELIST.join(", ")
+            ));
+            Ok(s)
+        }
+        _ => Err(format!("unknown tool {name}; tools: check_reply, ask, table")),
+    }
+}
+
+/// The MCP stdio loop: newline-delimited JSON-RPC 2.0. Read-only scoring and
+/// pure table queries; exits on EOF.
+fn run_mcp() -> ! {
+    use std::io::{BufRead, Write};
+    let stdin = io::stdin();
+    let mut out = io::stdout();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let method = v
+            .get("method")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let id = v.get("id").cloned();
+        if method == "notifications/initialized" || id.is_none() {
+            continue;
+        }
+        let response = match method.as_str() {
+            "initialize" => serde_json::json!({
+                "jsonrpc": "2.0", "id": id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "host-lint", "version": host_lint::ENGINE_VERSION }
+                }
+            }),
+            "tools/list" => serde_json::json!({
+                "jsonrpc": "2.0", "id": id,
+                "result": { "tools": [
+                    { "name": "check_reply", "description": "Score a model reply against the lem pronoun contract: any lem-paradigm token or first-person word is a violation.", "inputSchema": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] } },
+                    { "name": "ask", "description": "The paradigm oracle: the correct form for a slot (speak, address, discuss, subagents) and case (subject, object, possessive, reflexive).", "inputSchema": { "type": "object", "properties": { "slot": { "type": "string" }, "case": { "type": "string" }, "plural": { "type": "boolean" } }, "required": ["slot", "case"] } },
+                    { "name": "table", "description": "The full lem paradigm table.", "inputSchema": { "type": "object", "properties": {} } }
+                ] }
+            }),
+            "tools/call" => {
+                let params = v.get("params").cloned().unwrap_or(serde_json::Value::Null);
+                let name = params
+                    .get("name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let empty = serde_json::Map::new();
+                let empty = serde_json::Value::Null;
+                let targs = params.get("arguments").unwrap_or(&empty);
+                match mcp_tool_call(&name, targs) {
+                    Ok(text) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": { "content": [ { "type": "text", "text": text } ], "isError": false }
+                    }),
+                    Err(e) => serde_json::json!({
+                        "jsonrpc": "2.0", "id": id,
+                        "result": { "content": [ { "type": "text", "text": e } ], "isError": true }
+                    }),
+                }
+            }
+            _ => serde_json::json!({
+                "jsonrpc": "2.0", "id": id,
+                "error": { "code": -32601, "message": "method not found" }
+            }),
+        };
+        let _ = writeln!(out, "{response}");
+        let _ = out.flush();
+    }
+    process::exit(0)
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     // `lexicon` is a subcommand (CRUD over the allowlist), not a scan flag.
     if args.get(1).map(String::as_str) == Some("lexicon") {
         run_lexicon(&repo_root(), &args[2..]);
+    }
+
+    // `mcp` serves the pronoun contract over the Model Context Protocol
+    // (plan/0089): live checking at the authoring moment, for agents whose
+    // output never passes a hook or a wire gate. Stdio, newline-delimited
+    // JSON-RPC; read-only; exits on EOF.
+    if args.get(1).map(String::as_str) == Some("mcp") {
+        run_mcp();
     }
 
     // `gather` is a discovery subcommand (plan/0035), not a scan flag.
@@ -739,6 +915,7 @@ fn main() {
     let allow = lex.phrases_lc.as_slice();
     let units = lex.units.as_slice();
     let strict = lex.strict;
+    let lem_active = lex.lem;
     let mut matches = Vec::new();
 
     if let Some(path) = &stdin_as {
@@ -764,6 +941,10 @@ fn main() {
             // scope is that file's, not the invocation's (host-lint#26).
             let lex = scopes.for_file(Path::new(path));
             scan_text_with_allow_strict(&input, path, &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
+            if lex.lem {
+                let markdown = ext.eq_ignore_ascii_case("md");
+                scan_lem_contract(&input, path, markdown, &mut matches);
+            }
         }
     } else if stdin_flag {
         let mut input = String::new();
@@ -775,6 +956,9 @@ fn main() {
         // A stdin title/draft gets both naming and prose tells.
         scan_text_with_allow_strict(&input, "stdin", allow, units, strict, &mut matches);
         scan_prose_text(&input, "stdin", allow, &mut matches);
+        if lem_active {
+            scan_lem_contract(&input, "stdin", false, &mut matches);
+        }
         // The subject (first line) becomes a squash-merge subject / gh title; a
         // decoration tell there blocks rather than warns. The body stays advisory.
         escalate_subject_decoration(input.lines().next().unwrap_or(""), &mut matches);
@@ -798,7 +982,10 @@ fn main() {
                 match fs::read_to_string(f) {
                     Ok(content) => {
                         let lex = scopes.for_file(Path::new(f));
-                        scan_prose_text(&content, f, &lex.phrases_lc, &mut matches)
+                        scan_prose_text(&content, f, &lex.phrases_lc, &mut matches);
+                        if lex.lem {
+                            scan_lem_contract(&content, f, true, &mut matches);
+                        }
                     }
                     Err(e) => {
                         eprintln!("host-lint: cannot read {f}: {e}");
@@ -810,7 +997,7 @@ fn main() {
     } else if docs_flag {
         audit_tracked_docs(&root, &scopes, Corpus::WorkingTree, &mut matches);
     } else if log_flag {
-        run_log(allow, units, strict, &mut matches);
+        run_log(allow, units, strict, lem_active, &mut matches);
     } else if files.is_empty() {
         eprintln!("Usage: host-lint [--stdin] [--prose] [--docs] [--json] [--all] [--log] [files...]");
         eprintln!("       host-lint commit --message <file> [--diff <file>] [--json]");
@@ -862,7 +1049,11 @@ fn main() {
                 Ok(content) => {
                     {
                         let lex = scopes.for_file(Path::new(f));
-                        scan_text_with_allow_strict(&content, f, &lex.phrases_lc, &lex.units, lex.strict, &mut matches)
+                        scan_text_with_allow_strict(&content, f, &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
+                        if lex.lem {
+                            let markdown = f.to_lowercase().ends_with(".md");
+                            scan_lem_contract(&content, f, markdown, &mut matches);
+                        }
                     }
                 }
                 Err(e) => {
