@@ -1029,10 +1029,15 @@ pub struct Lexicon {
     /// This file declared `host-lint: root`, so a search that reached it stops
     /// rather than continuing into an enclosing repository.
     pub is_root: bool,
-    /// The lem pronoun contract is active in this scope: the LEXICON declared
-    /// `host-lint: lem`, or a manual in the walk teaches the pronoun system
-    /// (the spine marker — plan/0089).
+    /// The lem pronoun contract is active for model-voice surfaces (commit
+    /// messages, stdin): the LEXICON declared `host-lint: lem`, or a manual in
+    /// the walk teaches the pronoun system (the spine marker — plan/0089).
     pub lem: bool,
+    /// The contract is active for FILES: the directive only. A repository's
+    /// records discuss the contract itself (the naming-banned-words trap),
+    /// so file coverage is an explicit declaration, never inherited from the
+    /// spine marker.
+    pub lem_files: bool,
 }
 
 /// The spine marker: a manual in `dir` that teaches the pronoun system
@@ -1057,13 +1062,14 @@ fn spine_marker_active(dir: &Path) -> bool {
 /// loader both the CLI and an embedder call, so the prose/`--docs` lane masks the same
 /// declared phrases everywhere.
 pub fn load_lexicon(root: &Path) -> Lexicon {
-    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new(), is_root: false, lem: false };
+    let mut lex = Lexicon { phrases_lc: Vec::new(), strict: false, jira_keys: Vec::new(), units: Vec::new(), entries: Vec::new(), is_root: false, lem: false, lem_files: false };
     if root.as_os_str().is_empty() {
         return lex;
     }
     if spine_marker_active(root) {
         lex.lem = true;
     }
+
     let content = match fs::read_to_string(root.join("LEXICON")) {
         Ok(c) => c,
         Err(_) => return lex,
@@ -1077,6 +1083,7 @@ pub fn load_lexicon(root: &Path) -> Lexicon {
             lex.is_root = true;
         } else if is_lem_directive(line) {
             lex.lem = true;
+            lex.lem_files = true;
         } else if let Some(keys) = parse_jira_keys(line) {
             lex.jira_keys.extend(keys);
         } else if let Some(u) = parse_unit_directive(line) {
@@ -1130,6 +1137,7 @@ pub fn resolve_lexicon(dir: &Path, stop_at: &Path) -> Lexicon {
         entries: Vec::new(),
         is_root: false,
         lem: false,
+        lem_files: false,
     };
     let mut here = Some(dir.to_path_buf());
     while let Some(d) = here {
@@ -1141,6 +1149,7 @@ pub fn resolve_lexicon(dir: &Path, stop_at: &Path) -> Lexicon {
             merged.entries.extend(lex.entries);
             merged.strict |= lex.strict;
             merged.lem |= lex.lem;
+            merged.lem_files |= lex.lem_files;
             if lex.is_root {
                 merged.is_root = true;
                 break;
@@ -2062,7 +2071,7 @@ pub fn run_docs(
                 // rather than this one's (host-lint#26).
                 let lex = scopes.for_file(&path);
                 scan_prose_text(&content, rel, &lex.phrases_lc, &mut scan.matches);
-                if lex.lem {
+                if lex.lem_files {
                     scan_lem_contract(&content, rel, true, &mut scan.matches)
                 }
             }

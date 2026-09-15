@@ -940,7 +940,7 @@ fn main() {
             // scope is that file's, not the invocation's (host-lint#26).
             let lex = scopes.for_file(Path::new(path));
             scan_text_with_allow_strict(&input, path, &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
-            if lex.lem {
+            if lex.lem_files {
                 let markdown = ext.eq_ignore_ascii_case("md");
                 scan_lem_contract(&input, path, markdown, &mut matches);
             }
@@ -982,7 +982,7 @@ fn main() {
                     Ok(content) => {
                         let lex = scopes.for_file(Path::new(f));
                         scan_prose_text(&content, f, &lex.phrases_lc, &mut matches);
-                        if lex.lem {
+                        if lex.lem_files {
                             scan_lem_contract(&content, f, true, &mut matches);
                         }
                     }
@@ -1049,7 +1049,7 @@ fn main() {
                     {
                         let lex = scopes.for_file(Path::new(f));
                         scan_text_with_allow_strict(&content, f, &lex.phrases_lc, &lex.units, lex.strict, &mut matches);
-                        if lex.lem {
+                        if lex.lem_files {
                             let markdown = f.to_lowercase().ends_with(".md");
                             scan_lem_contract(&content, f, markdown, &mut matches);
                         }
