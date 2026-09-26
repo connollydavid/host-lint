@@ -5,6 +5,11 @@
 set -e
 
 BINARY="${1:?usage: test-integration.sh <binary>}"
+# Absolutize before any test cd's away: several sections run the binary as
+# `( cd "$dir" && "$BINARY" ... )`, where a relative argument resolves inside the
+# temp directory and the not-found (127) trips set -e before a verdict prints.
+# The CI job passes `./host-lint-linux-amd64`, so this is the shape CI runs.
+BINARY="$(cd "$(dirname "$BINARY")" && pwd)/$(basename "$BINARY")"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -958,6 +963,9 @@ printf '# Manual
 
 - model: lemu will proceed whenever you say go.
 ' > "$LEM_DIR/manual.md"
+# File coverage is the LEXICON declaration, never inherited: the directive lives
+# in the scanned tree's LEXICON, not in the markdown under scan.
+printf '# host-lint: lem\n' > "$LEM_DIR/LEXICON"
 ( cd "$LEM_DIR" && "$BINARY" manual.md > lem-out.txt 2>&1 ) || rc=$?
 grep -q "lem-form" "$LEM_DIR/lem-out.txt" && ! grep -q "operator: lemu" "$LEM_DIR/lem-out.txt"     && ok "lem: the doctrine section is excluded from its own scan"     || bad "lem: section exclusion"
 rm -rf "$LEM_DIR"
