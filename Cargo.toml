@@ -18,7 +18,7 @@ members = ["host-lint-ffmpeg", "host-lint-openwrt"]
 default-members = [".", "host-lint-ffmpeg"]
 
 [dependencies]
-host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "b9cace10c07b1e6316f835d21b131be9d5a07c01" }
+host-grammar = { git = "https://github.com/connollydavid/host-grammar", rev = "6cd41c37f06a62652d9fb767cae675225cea5d01" }
 
 # The MCP mode speaks newline-delimited JSON-RPC; the protocol surface is the
 # one place the engine parses untrusted JSON, so it rides a maintained parser
