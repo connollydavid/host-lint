@@ -1284,8 +1284,13 @@ fn is_lem_section_heading(line: &str) -> bool {
     lower.contains("pronoun system") && lower.contains("lem")
 }
 
-fn is_first_person_word(lower_word: &str) -> bool {
-    matches!(lower_word, "i" | "me" | "my" | "mine" | "myself")
+/// The first-person pronouns. `i` matches case-insensitively — the capital `I` is
+/// the primary first-person catch. The rest match case-SENSITIVELY lowercase: the
+/// pronoun is lowercase in valid prose, and an uppercase token is a different word —
+/// the `ME` acronym (Management Engine) is domain vocabulary, not the model
+/// speaking (host-lint#30).
+fn is_first_person_word(word: &str) -> bool {
+    matches!(word, "me" | "my" | "mine" | "myself") || word.eq_ignore_ascii_case("i")
 }
 
 fn canonical_lem_word(lower: &str) -> bool {
@@ -1365,7 +1370,7 @@ pub fn scan_lem_line(line: &str) -> Vec<LemHit> {
         if lower == "mines" {
             hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Mines });
         }
-        if !quoted && is_first_person_word(&lower) {
+        if !quoted && is_first_person_word(word) {
             hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::FirstPerson });
         }
         if lower.starts_with("lem") && !LEM_WHITELIST.contains(&lower.as_str()) {

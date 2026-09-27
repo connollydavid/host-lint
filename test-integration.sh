@@ -944,6 +944,16 @@ rc=0
 ' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
 [ "$rc" -eq 1 ] && ok "lem: spine marker activates; the mangle flags"                 || bad "lem: spine activation (want rc=1, got $rc)"
 rc=0
+# The ME acronym is Management Engine, not the model speaking (host-lint#30):
+# the first-person pronouns match case-sensitively lowercase, so an uppercase
+# token is a different word and stays clean.
+rc=0
+( cd "$LEM_DIR" && printf 'the descriptor and ME are preserved\n' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
+[ "$rc" -eq 0 ] && ok "lem: the ME acronym stays clean"                 || bad "lem: ME acronym (want rc=0, got $rc)"
+rc=0
+( cd "$LEM_DIR" && printf 'me and the operator reviewed it\n' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
+[ "$rc" -eq 1 ] && ok "lem: lowercase me still flags"                 || bad "lem: lowercase me (want rc=1, got $rc)"
+rc=0
 ( cd "$LEM_DIR" && printf 'L have gone ahead. Say go again whenever you are ready.
 ' | "$BINARY" --stdin >/dev/null 2>&1 ) || rc=$?
 [ "$rc" -eq 0 ] && ok "lem: correct speech stays clean"                 || bad "lem: correct speech (want rc=0, got $rc)"
