@@ -191,7 +191,36 @@ jobs:
         # (call/0018, #8).
         run: host-lifecycle obligations host-lint.allium --tests tests --prove src --strict-discharge
 
+  # One harness per job. The single aggregate `cargo kani` job never concluded:
+  # every run died at GitHub's 6-hour ceiling with the proof unfinished (six
+  # consecutive runs cancelled at 6h00m), while the same harnesses conclude
+  # per-harness under host-prove at release time. Sharding bounds each proof to
+  # its own job so the ceiling can only bite one harness, and names it when it
+  # does. The re-derivation discharge gets its own job for the same reason: it
+  # sits AFTER the proof step and so never once ran in CI.
   kani:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - scan_line_never_panics
+          - form_and_mangle_hits_are_classified_by_the_table
+          - hits_are_word_bounded
+          - verify_review_code_accepts_hash_digit
+          - verify_review_code_rejects_two_letters
+          - verify_seg_glob_star_matches_any
+    name: kani (${{ matrix.harness }})
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Kani (pinned)
+        run: |
+          cargo install --locked kani-verifier --version 0.67.0
+          cargo kani setup
+      - name: Verify ${{ matrix.harness }}
+        run: cargo kani --output-format terse --harness ${{ matrix.harness }}
+
+  kani-rungs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -199,8 +228,6 @@ jobs:
         run: |
           cargo install --locked kani-verifier --version 0.67.0
           cargo kani setup
-      - name: Verify proof harnesses (code-conformance tier)
-        run: cargo kani --output-format terse
       - name: Install allium-cli + host-prove + host-lifecycle (pinned)
         # `obligations` derives the obligations via `allium plan`, so allium-cli is
         # needed here too (not only in the allium job).
