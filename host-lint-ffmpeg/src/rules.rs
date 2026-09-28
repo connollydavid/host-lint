@@ -119,12 +119,12 @@ pub struct Rule {
 }
 
 /// The upstream commit every pin below was taken from.
-pub const UPSTREAM_COMMIT: &str = "c6309b5c63add7ad0ec221fafefc32bdcd6f8b91";
+pub const UPSTREAM_COMMIT: &str = "45f3fecca9f800a4432a6e3cfb3a76ef47f9d07a";
 
 pub const SOURCES: &[Source] = &[
-    Source { path: "doc/developer.texi", sha256: "26549522babfb7af744059d68077440064de6693ee6ff8c41b53ea3c36534e4c" },
+    Source { path: "doc/developer.texi", sha256: "485effab883efe4b27090425992b8a5086b3174b4f80244ce3c5bbb2d283b0de" },
     Source { path: "doc/mailing-list-faq.texi", sha256: "7ba38b8b16e6b94d6054d64da6dfa17738c874b693d85fe8ee9f62b36b7ac0f6" },
-    Source { path: "MAINTAINERS", sha256: "55e05c3c17d7909886cbdd563154ff2d7a43bc5d0866bddb63df2adbc5aa0f58" },
+    Source { path: "MAINTAINERS", sha256: "5a132f046621e05a1f439488e3a96e4853615b93cd6bfb5441888ef6b7b4c424" },
     Source { path: "doc/fate.texi", sha256: "07b49cf2c33b20d04b828166ce569f6d7d57e4b2791b113bcd6b134e7960ecba" },
 ];
 
@@ -142,7 +142,7 @@ pub const SECTIONS: &[Section] = &[
     Section { source: "doc/developer.texi", title: "Naming conventions", sha256: "26a4bfd4289b10119ddc355fc773e6f81a6bc09ea4ac57a0dc028bc4bfa9465c", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Miscellaneous conventions", sha256: "f0a4db743feca4c08b8e2d9a3967916cdbdf5a7f41c738d1beae0bfb48cf7241", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Development Policy", sha256: "ab7cace5acde8e8514797b044fb683dae08acfb39477bda56a675793dd871b2a", rule_bearing: false },
-    Section { source: "doc/developer.texi", title: "Code behaviour", sha256: "2881a255e63dbaa3a3f7bb86e0b8895ea5f4bb80dc9d0ea8a93e8b3977c1793e", rule_bearing: true },
+    Section { source: "doc/developer.texi", title: "Code behaviour", sha256: "b0aec9a14c908861f0a9095b4da2a888e5d00e5274eb6b8e097788896b6d4948", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Patches/Committing", sha256: "653644de600130e555e01d86d8e130199d5f8abc954a9e98801b6c4ed4fb83e8", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Code", sha256: "8daf608e26e16e0a0e0212e0412ae237e255ce896020b962e52d3eff46969152", rule_bearing: true },
     Section { source: "doc/developer.texi", title: "Library public interfaces", sha256: "1d9ca664716d471ac943a516b69ee4792b22527565be8a6ca6974a57ab9fd4ca", rule_bearing: true },
@@ -212,9 +212,13 @@ pub const RULES: &[Rule] = &[
     Rule { id: "thread-and-library-safety", section: "Code behaviour", subheading: "Thread- and library-safety",
            tier: Tier::Attested, lane: Lane::Build, measured_rate: None,
            summary: "Code is safe to use from a library and under threads" },
+    // Upstream rewrote the subheading this rule attests (host-lint#31): handling
+    // policy is implementation-defined, with concealment where practical. The
+    // summary carries both expectations; the corpus authority chose to update the
+    // guidance rather than keep the old wording.
     Rule { id: "robustness", section: "Code behaviour", subheading: "Robustness",
            tier: Tier::Attested, lane: Lane::Build, measured_rate: None,
-           summary: "Input handling survives malformed and hostile data" },
+           summary: "Input handling survives malformed and hostile data; error reporting is implementation-defined, with concealment where practical" },
     Rule { id: "memory-allocation", section: "Code behaviour", subheading: "Memory allocation",
            tier: Tier::Heuristic, lane: Lane::Diff, measured_rate: None,
            summary: "Allocations are checked and freed on every path" },

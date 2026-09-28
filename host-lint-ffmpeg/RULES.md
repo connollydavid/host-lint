@@ -21,7 +21,7 @@ authority.
 
 ## The corpus
 
-Pinned at FFmpeg master `c6309b5c63add7ad0ec221fafefc32bdcd6f8b91`.
+Pinned at FFmpeg master `45f3fecca9f800a4432a6e3cfb3a76ef47f9d07a`.
 
 | Rule | Tier | Lane | Measured | Upstream section |
 |---|---|---|---|---|
