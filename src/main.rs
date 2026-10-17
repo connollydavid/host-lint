@@ -698,13 +698,13 @@ The human is you; the model speaks as L. Rewrite without lem-forms or first pers
             host_lint::lem_form(slot, case, plural)
                 .map(|f| f.to_string())
                 .ok_or_else(|| {
-                    "unknown slot or case; slots: speak, address, discuss, subagents; cases: subject, object, possessive, reflexive"
+                    "unknown slot or case; slots: speak, address, discuss, subagents; cases: subject, object, determiner, possessive, reflexive"
                         .to_string()
                 })
         }
         "table" => {
             let mut s = String::from(
-                "slot            subject  object   possessive  reflexive
+                "slot            subject  object   determiner  possessive  reflexive
 ",
             );
             for (slot, key, plural) in [
@@ -714,12 +714,19 @@ The human is you; the model speaks as L. Rewrite without lem-forms or first pers
                 ("discuss", "discuss", false),
                 ("subagents", "subagents", false),
             ] {
+                // The address paradigm splits its genitive by use (the
+                // determiner before a thing, the 's form alone); every other
+                // slot serves both uses with the one possessive form.
+                let det = host_lint::lem_form(key, "determiner", plural)
+                    .or_else(|| host_lint::lem_form(key, "possessive", plural))
+                    .unwrap_or("?");
                 s.push_str(&format!(
-                    "{:<15} {:<8} {:<8} {:<11} {}
+                    "{:<15} {:<8} {:<8} {:<11} {:<11} {}
 ",
                     slot,
                     host_lint::lem_form(key, "subject", plural).unwrap_or("?"),
                     host_lint::lem_form(key, "object", plural).unwrap_or("?"),
+                    det,
                     host_lint::lem_form(key, "possessive", plural).unwrap_or("?"),
                     host_lint::lem_form(key, "reflexive", plural).unwrap_or("?"),
                 ));

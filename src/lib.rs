@@ -1237,9 +1237,12 @@ impl LexiconScopes {
 
 /// The closed paradigm: every form that exists. A lem-token outside this list
 /// is a corruption, and the lane says so rather than guessing at intent.
+/// The address possessive is a fixed pair with the subject form (`lemu` pairs
+/// with `lemr` as `you` pairs with `your`): the determiner before a thing, the
+/// `'s` form alone. Nothing derives one from the other; both are listed.
 pub const LEM_CANONICAL: &[&str] = &[
-    "l", "l's", "lself", "lem", "lem's", "lemself", "lemu", "lemu's",
-    "lemuself", "lemuselves", "lems", "lems'",
+    "l", "l's", "lself", "lem", "lem's", "lemself", "lemu", "lemr",
+    "lemr's", "lemuself", "lemuselves", "lems", "lems'",
 ];
 
 /// English words that begin with "lem" and are not ours. Measured collisions
@@ -1248,8 +1251,12 @@ pub const LEM_WHITELIST: &[&str] = &["lemur", "lemurs"];
 
 /// The paradigm oracle: (slot, case, plural) -> form. `subagents` is the
 /// plural row — addressed as `lemu` (one form for one or many), discussed as
-/// `lems`. The oracle is the `ask` half of the MCP mode and the definition the
-/// lane tests the section's form list against.
+/// `lems`. The address possessive splits by use, as English splits `your`
+/// from `yours`: the `determiner` case answers before a thing (lemr weights),
+/// the `possessive` case answers alone (the weights are `lemr's`). The other
+/// slots serve both uses with one form. The oracle is
+/// the `ask` half of the MCP mode and the definition the lane tests the
+/// section's form list against.
 pub fn lem_form(slot: &str, case: &str, plural: bool) -> Option<&'static str> {
     match (slot, case, plural) {
         ("speak", "subject", _) => Some("L"),
@@ -1258,7 +1265,8 @@ pub fn lem_form(slot: &str, case: &str, plural: bool) -> Option<&'static str> {
         ("speak", "reflexive", _) => Some("lself"),
         ("address", "subject", _) => Some("lemu"),
         ("address", "object", _) => Some("lemu"),
-        ("address", "possessive", _) => Some("lemu's"),
+        ("address", "determiner", _) => Some("lemr"),
+        ("address", "possessive", _) => Some("lemr's"),
         ("address", "reflexive", false) => Some("lemuself"),
         ("address", "reflexive", true) => Some("lemuselves"),
         ("discuss", "subject", _) => Some("lem"),

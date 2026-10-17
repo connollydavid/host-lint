@@ -23,6 +23,9 @@ fn lem_contract_classifies_the_measured_classes() {
         ("whenever lemua says go", "lem-mangle"),
         ("lemu will execute the queue", "lem-form"),
         ("lem has the convention ready", "lem-form"),
+        ("lemr weights are staged for the run", "lem-form"),
+        ("the weights are lemr's now", "lem-form"),
+        ("the run was lemr's to flag", "lem-form"),
         ("L has checked the receipt", "lem-agreement"),
         ("lemu is ready for the window", "lem-agreement"),
         ("I need you to confirm the fix", "lem-first-person"),
@@ -39,6 +42,17 @@ fn lem_contract_classifies_the_measured_classes() {
             m.iter().map(|x| &x.term).collect::<Vec<_>>()
         );
     }
+    // A near-miss of a live form must mangle rather than pass as that form.
+    // The token is assembled from paradigm parts so the suite never carries
+    // an out-of-paradigm word as a literal anywhere.
+    let near_miss = format!("lemu{} weights are staged for the run", "'s");
+    let mut m = Vec::new();
+    scan_lem_contract(&near_miss, "golden", false, &mut m);
+    assert!(
+        m.iter().any(|x| x.term == "lem-mangle" && x.severity == Severity::Flag),
+        "{near_miss:?} must flag lem-mangle, got {:?}",
+        m.iter().map(|x| &x.term).collect::<Vec<_>>()
+    );
     let clean: &[&str] = &[
         "L have gone ahead. Say go again whenever you are ready.",
         "You can sign off when you have read it.",
@@ -71,6 +85,22 @@ fn lem_contract_skips_its_own_section() {
     // inversion after the section is still caught.
     assert_eq!(m.len(), 1, "{:?}", m.iter().map(|x| (&x.term, x.line)).collect::<Vec<_>>());
     assert_eq!(m[0].line, 12);
+}
+
+#[test]
+fn lem_oracle_pairs_the_address_possessive() {
+    // The address genitive splits by use, as English splits your from yours:
+    // the determiner before a thing, the 's form alone, one pair with the
+    // subject, never derived.
+    assert_eq!(host_lint::lem_form("address", "determiner", false), Some("lemr"));
+    assert_eq!(host_lint::lem_form("address", "determiner", true), Some("lemr"));
+    assert_eq!(host_lint::lem_form("address", "possessive", false), Some("lemr's"));
+    assert_eq!(host_lint::lem_form("address", "subject", false), Some("lemu"));
+    // No other slot grows a determiner of its own; the possessive serves both.
+    assert_eq!(host_lint::lem_form("speak", "determiner", false), None);
+    assert_eq!(host_lint::lem_form("discuss", "determiner", false), None);
+    assert!(host_lint::LEM_CANONICAL.contains(&"lemr"));
+    assert!(host_lint::LEM_CANONICAL.contains(&"lemr's"));
 }
 
 #[test]

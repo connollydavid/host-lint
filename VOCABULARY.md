@@ -456,9 +456,12 @@ enforces.
 On a declared model-voice surface (a manual in the outward walk that teaches the
 pronoun system, or the `# host-lint: lem` directive), a lem-paradigm token is a
 flag-tier tell. The form list is closed: l, l's, lself, lem, lem's, lemself,
-lemu, lemu's, lemuself, lemuselves, lems, lems'. A token outside the list that
-starts with `lem` is a corruption, never a new form (`lemur`/`lemurs` are
-measured collisions).
+lemu, lemr, lemr's, lemuself, lemuselves, lems, lems'. The address possessive
+is a fixed pair with the subject form (lemu pairs with lemr as `you` pairs
+with `your`): lemr before a thing (lemr weights), lemr's alone (the weights
+are lemr's), and the reflexives stay on the address stem. A token outside the
+list that starts with `lem` is a corruption, never a new form (`lemur`/`lemurs`
+are measured collisions).
 
 Classes: `lem-form` (a paradigm form on a scored surface), `lem-mangle`
 (a corruption), `lem-first-person` (I/me/my/mine/myself outside double quotes),
