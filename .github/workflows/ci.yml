@@ -181,7 +181,7 @@ jobs:
       - name: allium plan (ffmpeg pack)
         run: allium plan host-lint-ffmpeg/ffmpeg-pack.allium
       - name: Install host-lifecycle (pinned)
-        run: cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
+        run: cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev 98fe982255e188e3361dedb51a03660b90b6f5a5
       - name: Lint obligations (dispositioned, exercises-linked, inputs not stale)
         # Offline gate: every obligation dispositioned + test/proof names present, every
         # test: carrying an `exercises=` link the named test actually references
@@ -193,19 +193,23 @@ jobs:
 
   # One harness per job. The single aggregate `cargo kani` job never concluded:
   # every run died at GitHub's 6-hour ceiling with the proof unfinished (six
-  # consecutive runs cancelled at 6h00m), while the same harnesses conclude
-  # per-harness under host-prove at release time. Sharding bounds each proof to
-  # its own job so the ceiling can only bite one harness, and names it when it
-  # does. The re-derivation discharge gets its own job for the same reason: it
-  # sits AFTER the proof step and so never once ran in CI.
+  # consecutive runs cancelled at 6h00m). Sharding alone did not save the lane
+  # either (plan/0102's measurement: each of the three lem harnesses alone ate
+  # the ceiling), so the lem proofs are decomposed — word-level contracts,
+  # proven once, and the line-level proofs stubbed by them — and each harness
+  # carries its own unwind bound. One job per proof bounds the ceiling to one
+  # harness and names it when it bites. The re-derivation discharge gets its
+  # own job for the same reason: it sits AFTER the proof step and so never
+  # once ran in CI.
   kani:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         harness:
+          - lem_word_kinds_honors_its_contract
+          - word_run_end_honors_its_contract
           - scan_line_never_panics
-          - form_and_mangle_hits_are_classified_by_the_table
           - hits_are_word_bounded
           - verify_review_code_accepts_hash_digit
           - verify_review_code_rejects_two_letters
@@ -218,7 +222,7 @@ jobs:
           cargo install --locked kani-verifier --version 0.67.0
           cargo kani setup
       - name: Verify ${{ matrix.harness }}
-        run: cargo kani --output-format terse --harness ${{ matrix.harness }}
+        run: cargo kani -Z function-contracts --output-format terse --harness ${{ matrix.harness }}
 
   kani-rungs:
     runs-on: ubuntu-latest
@@ -233,8 +237,8 @@ jobs:
         # needed here too (not only in the allium job).
         run: |
           cargo install --locked allium-cli --version 3.4.2
-          cargo install --locked --git https://github.com/connollydavid/host-prove --rev 91719aafdb7d425b3d2626b6ae019d8cd52ffe87
-          cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev d4ce47e142a25568b549e0d6995936fdbb8f137b
+          cargo install --locked --git https://github.com/connollydavid/host-prove --rev c05782c0f7f170f3b517bffdea66ae524dd0b0fa
+          cargo install --locked --git https://github.com/connollydavid/host-lifecycle --rev 98fe982255e188e3361dedb51a03660b90b6f5a5
       - name: Discharge kani rungs by re-derivation (call/0018, #8)
         # The real discharge: re-run each kani: rung via host-prove and gate on PASS,
         # not name-presence. host-prove (on PATH) drives `cargo kani` per harness.
