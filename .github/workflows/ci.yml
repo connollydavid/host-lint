@@ -193,24 +193,40 @@ jobs:
 
   # One harness per job. The single aggregate `cargo kani` job never concluded:
   # every run died at GitHub's 6-hour ceiling with the proof unfinished (six
-  # consecutive runs cancelled at 6h00m). Sharding alone did not save the lane
-  # either (plan/0102's measurement: each of the three lem harnesses alone ate
-  # the ceiling), so the lem proofs are decomposed — word-level contracts,
-  # proven once, and the line-level proofs stubbed by them — and each harness
-  # carries its own unwind bound. One job per proof bounds the ceiling to one
-  # harness and names it when it bites. The re-derivation discharge gets its
-  # own job for the same reason: it sits AFTER the proof step and so never
-  # once ran in CI.
+  # consecutive runs cancelled at 6h00m), while the same harnesses conclude
+  # per-harness under host-prove at release time. Sharding bounds each proof to
+  # its own job so the ceiling can only bite one harness, and names it when it
+  # does. The re-derivation discharge gets its own job for the same reason: it
+  # sits AFTER the proof step and so never once ran in CI.
   kani:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         harness:
-          - lem_word_kinds_honors_its_contract
-          - word_run_end_honors_its_contract
-          - scan_line_never_panics
-          - hits_are_word_bounded
+          - scan_line_never_panics_n1
+          - scan_line_never_panics_n2
+          - scan_line_never_panics_n3
+          - scan_line_never_panics_n4
+          - scan_line_never_panics_n5
+          - scan_line_never_panics_n6
+          - lem_word_classification_matches_the_table_n3
+          - lem_word_classification_matches_the_table_n4
+          - lem_word_classification_matches_the_table_n5
+          - lem_word_classification_matches_the_table_n6
+          - lem_word_classification_matches_the_table_n7
+          - lem_word_classification_matches_the_table_n8
+          - lem_word_classification_matches_the_table_n9
+          - lem_word_classification_matches_the_table_n10
+          - exact_word_classification_matches_the_table_n1
+          - exact_word_classification_matches_the_table_n2
+          - exact_word_classification_matches_the_table_n3
+          - exact_word_classification_matches_the_table_n4
+          - exact_word_classification_matches_the_table_n5
+          - exact_word_classification_matches_the_table_n6
+          - exact_word_classification_matches_the_table_n7
+          - exact_word_classification_matches_the_table_n8
+          - word_run_end_is_word_bounded
           - verify_review_code_accepts_hash_digit
           - verify_review_code_rejects_two_letters
           - verify_seg_glob_star_matches_any
@@ -222,7 +238,7 @@ jobs:
           cargo install --locked kani-verifier --version 0.67.0
           cargo kani setup
       - name: Verify ${{ matrix.harness }}
-        run: cargo kani -Z function-contracts --output-format terse --harness ${{ matrix.harness }}
+        run: cargo kani --output-format terse --harness ${{ matrix.harness }}
 
   kani-rungs:
     runs-on: ubuntu-latest

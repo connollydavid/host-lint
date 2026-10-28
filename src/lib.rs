@@ -1301,8 +1301,15 @@ fn is_first_person_word(word: &str) -> bool {
     matches!(word, "me" | "my" | "mine" | "myself") || word.eq_ignore_ascii_case("i")
 }
 
-fn canonical_lem_word(lower: &str) -> bool {
-    LEM_CANONICAL.contains(&lower)
+/// The most kinds one word can carry (plan/0102): the four independent
+/// exact classes plus one lem-table class.
+const LEM_CLASS_MAX: usize = 5;
+
+/// Whether `word` names a paradigm form, compared ASCII-case-insensitively so
+/// the proof runs on byte-level predicates with no allocated lowercase
+/// (plan/0102).
+fn canonical_lem_word(word: &str) -> bool {
+    LEM_CANONICAL.iter().any(|c| word.eq_ignore_ascii_case(c))
 }
 
 /// The classes the contract flags on a scored surface. `L` and `l` alone are
@@ -1339,6 +1346,96 @@ pub struct LemHit {
     pub kind: LemKind,
 }
 
+/// Classify one word against the lem contract, in isolation: no offsets, no
+/// neighbors, no quote state beyond the `quoted` flag the caller carries. The
+/// per-word half of `scan_lem_line`'s loop body (plan/0102): the word-level
+/// proofs run this function, where the table is the whole surface.
+fn classify_lem_word(word: &str, quoted: bool) -> Vec<LemKind> {
+    let mut buf = [LemKind::We; LEM_CLASS_MAX];
+    let n = classify_lem_word_into(word, quoted, &mut buf);
+    buf[..n].to_vec()
+}
+
+/// The heap-free shape of `classify_lem_word` (plan/0102): at most five kinds
+/// fit one word (We, LselfCap, Mines, FirstPerson, and one of Mangle or Form),
+/// so a fixed array carries them and the proofs never touch allocation. The
+/// Vec form wraps this for the scanner.
+fn classify_lem_word_into(word: &str, quoted: bool, out: &mut [LemKind; LEM_CLASS_MAX]) -> usize {
+    let mut n = 0usize;
+    if word == "We" {
+        out[n] = LemKind::We;
+        n += 1;
+    }
+    if word == "Lself" {
+        out[n] = LemKind::LselfCap;
+        n += 1;
+    }
+    if word.eq_ignore_ascii_case("mines") {
+        out[n] = LemKind::Mines;
+        n += 1;
+    }
+    if !quoted && is_first_person_word(word) {
+        out[n] = LemKind::FirstPerson;
+        n += 1;
+    }
+    // The lem prefix, checked at the byte level: a str range slice reaches
+    // the panicking-slice machinery, which is what the proofs choke on.
+    let wb = word.as_bytes();
+    let lem_prefix = wb.len() >= 3
+        && (wb[0] == b'l' || wb[0] == b'L')
+        && (wb[1] == b'e' || wb[1] == b'E')
+        && (wb[2] == b'm' || wb[2] == b'M');
+    if lem_prefix && !LEM_WHITELIST.iter().any(|c| word.eq_ignore_ascii_case(c))
+    {
+        if !canonical_lem_word(word) {
+            out[n] = LemKind::Mangle;
+            n += 1;
+        } else if !word.eq_ignore_ascii_case("l") {
+            // A paradigm form on a scored surface is an inversion: the model
+            // speaking spends `L`, and `lemu`/`lem`/`lems` name models only.
+            out[n] = LemKind::Form;
+            n += 1;
+        }
+    }
+    n
+}
+
+/// The agreement table for one (subject, next-word) pair, in isolation
+/// (plan/0102), compared ASCII-case-insensitively. Bare `L` is judged here
+/// too: `L has` is the singular-agreement slip.
+fn agreement_defect(subject: &str, verb: &str) -> bool {
+    if subject.eq_ignore_ascii_case("l") {
+        verb.eq_ignore_ascii_case("has")
+            || verb.eq_ignore_ascii_case("is")
+            || verb.eq_ignore_ascii_case("was")
+            || verb.eq_ignore_ascii_case("does")
+    } else if subject.eq_ignore_ascii_case("lem") {
+        verb.eq_ignore_ascii_case("have")
+    } else if subject.eq_ignore_ascii_case("lems") {
+        verb.eq_ignore_ascii_case("has")
+            || verb.eq_ignore_ascii_case("is")
+            || verb.eq_ignore_ascii_case("was")
+    } else if subject.eq_ignore_ascii_case("lemu") {
+        verb.eq_ignore_ascii_case("is")
+            || verb.eq_ignore_ascii_case("was")
+            || verb.eq_ignore_ascii_case("does")
+            || verb.eq_ignore_ascii_case("has")
+    } else {
+        false
+    }
+}
+
+/// The exclusive end of the word run starting at `start`, where the caller
+/// guarantees `b[start]` is a word char (plan/0102): the tokenizer step the
+/// scanner and the word-boundedness proof share.
+fn word_run_end(b: &[u8], start: usize) -> usize {
+    let mut i = start;
+    while i < b.len() && is_lem_word_char(b[i]) {
+        i += 1;
+    }
+    i
+}
+
 /// Scan one line of a declared model-voice surface. Offsets are byte offsets
 /// into `line`. The matchers are hand-rolled ASCII scans so the Kani proofs
 /// run on this code, not on a regex engine.
@@ -1364,61 +1461,26 @@ pub fn scan_lem_line(line: &str) -> Vec<LemHit> {
         }
         let start = i;
         let quoted = in_quote;
-        while i < b.len() && is_lem_word_char(b[i]) {
-            i += 1;
-        }
-        let word = &line[start..i];
-        let lower = word.to_ascii_lowercase();
-        if word == "We" {
-            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::We });
-        }
-        if word == "Lself" {
-            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::LselfCap });
-        }
-        if lower == "mines" {
-            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Mines });
-        }
-        if !quoted && is_first_person_word(word) {
-            hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::FirstPerson });
-        }
-        if lower.starts_with("lem") && !LEM_WHITELIST.contains(&lower.as_str()) {
-            if !LEM_CANONICAL.contains(&lower.as_str()) {
-                hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Mangle });
-            } else if lower != "l" {
-                // A paradigm form on a scored surface is an inversion: the model
-                // speaking spends `L`, and `lemu`/`lem`/`lems` name models only.
-                hits.push(LemHit { off: start, word: word.to_string(), kind: LemKind::Form });
-            }
+        let end = word_run_end(b, start);
+        i = end;
+        let word = &line[start..end];
+        for kind in classify_lem_word(word, quoted) {
+            hits.push(LemHit { off: start, word: word.to_string(), kind });
         }
         // Agreement: for a paradigm subject, the next word judges the verb.
-        // Bare `L` is judged here too — `L has` is the singular-agreement slip.
-        if lower == "l"
-            || (canonical_lem_word(&lower) && lower != "l")
-        {
-            let mut j = i;
+        if canonical_lem_word(word) {
+            let mut j = end;
             while j < b.len() && (b[j] == b' ' || b[j] == b'\t') {
                 j += 1;
             }
             let vs = j;
-            while j < b.len() && is_lem_word_char(b[j]) {
-                j += 1;
-            }
-            if vs < j {
-                let verb = line[vs..j].to_ascii_lowercase();
-                let bad = match lower.as_str() {
-                    "l" => matches!(verb.as_str(), "has" | "is" | "was" | "does"),
-                    "lem" => verb == "have",
-                    "lems" => matches!(verb.as_str(), "has" | "is" | "was"),
-                    "lemu" => matches!(verb.as_str(), "is" | "was" | "does" | "has"),
-                    _ => false,
-                };
-                if bad {
-                    hits.push(LemHit {
-                        off: start,
-                        word: word.to_string(),
-                        kind: LemKind::Agreement,
-                    });
-                }
+            let ve = word_run_end(b, vs);
+            if vs < ve && agreement_defect(word, &line[vs..ve]) {
+                hits.push(LemHit {
+                    off: start,
+                    word: word.to_string(),
+                    kind: LemKind::Agreement,
+                });
             }
         }
     }
@@ -1466,67 +1528,81 @@ pub fn scan_lem_contract(input: &str, source: &str, markdown: bool, matches: &mu
 mod kani_lem {
     use super::*;
 
-    /// No input, however hostile, panics the matchers. The generator is
-    /// restricted to the scanner's own alphabet (quotes, spaces, separators,
-    /// word chars) — the characters a reply is actually made of.
+    // plan/0102: the proofs decompose, and the decomposition that makes them
+    // tractable is concrete length. A `&str` of symbolic length poisons every
+    // string op under it (measured 2026-10-28: a word-level harness at a
+    // symbolic 3..=10 never concluded; the same property at each concrete
+    // length concludes in seconds), so each harness case-splits on the length
+    // and proves one generic check per concrete N. The word domain keeps full
+    // coverage: n runs the whole range, and the longest table entry
+    // (`lemuselves`, ten bytes) sits inside it. Every harness declares its
+    // unwind bound.
+
+    /// The classifier control: concrete content through the real classifier.
+    #[kani::unwind(24)]
     #[kani::proof]
-    fn scan_line_never_panics() {
-        let n: usize = kani::any();
-        kani::assume(n <= 8);
-        let mut bytes: Vec<u8> = Vec::with_capacity(n);
-        for _ in 0..n {
-            let b: u8 = kani::any();
-            kani::assume(
-                b == b'"'
-                    || b == b' '
-                    || b == b'\t'
-                    || b == b'.'
-                    || b == b','
-                    || is_lem_word_char(b),
-            );
-            bytes.push(b);
-        }
-        let s = std::str::from_utf8(&bytes).unwrap();
-        let _ = scan_lem_line(s);
+    fn classify_concrete_smoke() {
+        let buf = [b'x', b'.', b'.', b'.', b'.', b'.', b'.', b'.', b'.', b'.'];
+        let s = core::str::from_utf8(&buf).unwrap();
+        let mut kinds = [LemKind::We; LEM_CLASS_MAX];
+        let nk = classify_lem_word_into(s, false, &mut kinds);
+        kani::assert(nk == 0, "x classifies to nothing");
     }
 
-    /// Soundness: every Form hit is a canonical form; every Mangle hit starts
-    /// with "lem", is not canonical, and is not a whitelisted English word.
+    /// The str-equality control: one symbolic byte, one string compare. If
+    /// this alone is slow, str equality on symbolic bytes is the cliff, not
+    /// the classifier (the 2026-10-28 diagnosis run).
+    #[kani::unwind(24)]
     #[kani::proof]
-    fn form_and_mangle_hits_are_classified_by_the_table() {
-        let n: usize = kani::any();
-        kani::assume(n >= 1 && n <= 8);
-        let mut bytes: Vec<u8> = Vec::with_capacity(n);
-        for _ in 0..n {
-            let b: u8 = kani::any();
-            kani::assume(b.is_ascii_alphanumeric() || b == b'\'');
-            bytes.push(b);
+    fn str_eq_smoke() {
+        let b: u8 = kani::any();
+        kani::assume(b.is_ascii_alphanumeric());
+        let buf = [b];
+        let s = core::str::from_utf8(&buf).unwrap();
+        kani::assert(!(s == "We"), "one alnum byte is never We");
+    }
+
+    /// The alloc-modeling control: a two-line Vec harness. If this alone is
+    /// slow on this stack, every heap-touching harness pays for allocation
+    /// modeling, not for its own property (the 2026-10-28 diagnosis run).
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn vec_alloc_smoke() {
+        let mut v: Vec<u8> = Vec::new();
+        let b: u8 = kani::any();
+        v.push(b);
+        kani::assert(v.len() == 1, "one push, one element");
+    }
+
+    /// One concrete length, checked whole. The word is lem-prefixed: the
+    /// domain where the table decides Form and Mangle.
+    fn check_lem_word<const N: usize>() {
+        let bytes: [u8; N] = kani::any();
+        kani::assume(N >= 3);
+        kani::assume(bytes[0] == b'l' && bytes[1] == b'e' && bytes[2] == b'm');
+        for b in bytes.iter() {
+            kani::assume(b.is_ascii_alphanumeric() || *b == b'\'');
         }
-        let s = std::str::from_utf8(&bytes).unwrap();
-        for h in scan_lem_line(s) {
-            let lower = h.word.to_ascii_lowercase();
-            match h.kind {
+        let word = std::str::from_utf8(&bytes).unwrap();
+        let mut kinds = [LemKind::We; LEM_CLASS_MAX];
+        let nk = classify_lem_word_into(word, false, &mut kinds);
+        for k in kinds[..nk].iter().copied() {
+            match k {
                 LemKind::Form => {
                     kani::assert(
-                        LEM_CANONICAL.contains(&lower.as_str()) && lower != "l",
+                        LEM_CANONICAL.iter().any(|c| word.eq_ignore_ascii_case(c))
+                            && !word.eq_ignore_ascii_case("l"),
                         "a Form hit is a canonical form other than bare `l`",
                     );
                 }
                 LemKind::Mangle => {
-                    kani::assert(lower.starts_with("lem"), "a Mangle hit starts with lem");
                     kani::assert(
-                        !LEM_CANONICAL.contains(&lower.as_str()),
+                        !LEM_CANONICAL.iter().any(|c| word.eq_ignore_ascii_case(c)),
                         "a Mangle hit is not canonical",
                     );
                     kani::assert(
-                        !LEM_WHITELIST.contains(&lower.as_str()),
+                        !LEM_WHITELIST.iter().any(|c| word.eq_ignore_ascii_case(c)),
                         "a Mangle hit is not whitelisted",
-                    );
-                }
-                LemKind::FirstPerson => {
-                    kani::assert(
-                        is_first_person_word(&lower),
-                        "a FirstPerson hit is a first-person word",
                     );
                 }
                 _ => {}
@@ -1534,34 +1610,218 @@ mod kani_lem {
         }
     }
 
-    /// Hits are word-bounded: a hit's last character ends a word (the next
-    /// byte is not a word char) whenever the word does not end the line.
+    /// The table property, one harness per concrete length (plan/0102): a
+    /// symbolic length across eight monomorphized copies is one enormous VC,
+    /// while each concrete length alone concludes in minutes, and the union of
+    /// the lengths is the same domain with the same unwind bounds. The names
+    /// carry the length so the CI matrix names what each job proves.
+    #[kani::unwind(24)]
     #[kani::proof]
-    fn hits_are_word_bounded() {
-        let n: usize = kani::any();
-        kani::assume(n >= 3 && n <= 12);
-        let mut bytes: Vec<u8> = Vec::with_capacity(n);
-        for _ in 0..n {
-            let b: u8 = kani::any();
-            kani::assume(
-                b == b'"'
-                    || b == b' '
-                    || b == b'\t'
-                    || b == b'.'
-                    || is_lem_word_char(b),
-            );
-            bytes.push(b);
+    fn lem_word_classification_matches_the_table_n3() {
+        check_lem_word::<3>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n4() {
+        check_lem_word::<4>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n5() {
+        check_lem_word::<5>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n6() {
+        check_lem_word::<6>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n7() {
+        check_lem_word::<7>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n8() {
+        check_lem_word::<8>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n9() {
+        check_lem_word::<9>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn lem_word_classification_matches_the_table_n10() {
+        check_lem_word::<10>();
+    }
+
+    /// One concrete length, the exact-word classes: We, LselfCap, Mines and
+    /// FirstPerson match their words and nothing else fires.
+    fn check_exact_word<const N: usize>() {
+        let bytes: [u8; N] = kani::any();
+        for b in bytes.iter() {
+            kani::assume(b.is_ascii_alphanumeric() || *b == b'\'');
         }
-        let s = std::str::from_utf8(&bytes).unwrap();
-        let sb = s.as_bytes();
-        for h in scan_lem_line(s) {
-            let end = h.off + h.word.len();
-            if end < sb.len() {
-                kani::assert(
-                    !is_lem_word_char(sb[end]),
-                    "a hit ends on a word boundary",
-                );
+        let word = std::str::from_utf8(&bytes).unwrap();
+        let mut kinds = [LemKind::We; LEM_CLASS_MAX];
+        let nk = classify_lem_word_into(word, false, &mut kinds);
+        for k in kinds[..nk].iter().copied() {
+            match k {
+                LemKind::We => kani::assert(word == "We", "We is exact"),
+                LemKind::LselfCap => kani::assert(word == "Lself", "Lself is exact"),
+                LemKind::Mines => {
+                    kani::assert(word.eq_ignore_ascii_case("mines"), "mines is exact");
+                }
+                LemKind::FirstPerson => {
+                    kani::assert(is_first_person_word(word), "a FirstPerson hit is a first-person word");
+                }
+                _ => {}
             }
+        }
+    }
+
+    /// One concrete line length, whole-scanner: the framing property (quote
+    /// state, index arithmetic, the slices) is panic-freedom, and every hit
+    /// names a real word in bounds.
+    fn check_scan_line<const N: usize>() {
+        let bytes: [u8; N] = kani::any();
+        for b in bytes.iter() {
+            kani::assume(
+                *b == b'"' || *b == b' ' || *b == b'\t' || *b == b'.' || *b == b',' || is_lem_word_char(*b),
+            );
+        }
+        let line = std::str::from_utf8(&bytes).unwrap();
+        for h in scan_lem_line(line) {
+            kani::assert(h.off < line.len(), "a hit's offset is in bounds");
+            kani::assert(!h.word.is_empty(), "a hit's word is nonempty");
+        }
+    }
+
+    /// The exact-word classes, one harness per concrete length 1 to 8 (the
+    /// longest exact word, `myself`, is six).
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n1() {
+        check_exact_word::<1>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n2() {
+        check_exact_word::<2>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n3() {
+        check_exact_word::<3>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n4() {
+        check_exact_word::<4>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n5() {
+        check_exact_word::<5>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n6() {
+        check_exact_word::<6>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n7() {
+        check_exact_word::<7>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn exact_word_classification_matches_the_table_n8() {
+        check_exact_word::<8>();
+    }
+
+    /// The framing property, one harness per concrete line length 1 to 6.
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n1() {
+        check_scan_line::<1>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n2() {
+        check_scan_line::<2>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n3() {
+        check_scan_line::<3>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n4() {
+        check_scan_line::<4>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n5() {
+        check_scan_line::<5>();
+    }
+
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn scan_line_never_panics_n6() {
+        check_scan_line::<6>();
+    }
+
+    /// The word-run step extracts a maximal run: nonempty, all word chars, and
+    /// closed on the right (the next byte, when any, is not a word char). This
+    /// is the word-boundedness property the scanner's hits inherit, proved
+    /// against the extraction alone, over raw bytes: no string, no slicing.
+    #[kani::unwind(24)]
+    #[kani::proof]
+    fn word_run_end_is_word_bounded() {
+        let n: usize = kani::any();
+        kani::assume(3 <= n && n <= 12);
+        let mut bytes: [u8; 12] = [b' '; 12];
+        for b in bytes.iter_mut().take(n) {
+            let c: u8 = kani::any();
+            kani::assume(
+                c == b' ' || c == b'\t' || c == b'"' || c == b'.' || c == b',' || is_lem_word_char(c),
+            );
+            *b = c;
+        }
+        let start: usize = kani::any();
+        kani::assume(start < n);
+        kani::assume(is_lem_word_char(bytes[start]));
+        let end = word_run_end(&bytes, start);
+        kani::assert(start < end, "the run is nonempty");
+        kani::assert(end <= n, "the run stays in bounds");
+        let mut i = start;
+        while i < end {
+            kani::assert(is_lem_word_char(bytes[i]), "every run byte is a word char");
+            i += 1;
+        }
+        if end < n {
+            kani::assert(!is_lem_word_char(bytes[end]), "the run is word-bounded");
         }
     }
 }
