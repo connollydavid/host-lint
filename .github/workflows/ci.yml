@@ -70,8 +70,6 @@ jobs:
       - name: Build
         if: matrix.name != 'host-lint-linux-amd64'
         run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Stage binaries
         shell: bash
         run: |
