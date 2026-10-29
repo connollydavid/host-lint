@@ -78,6 +78,11 @@ entity Line {
     is_model_voice_surface: Boolean
     in_lem_doctrine_section: Boolean
     has_lem_contract_defect: Boolean
+    -- host#27: the line is a markdown heading carrying an explicit `{#anchor}`
+    -- that does not equal its title's slug (the derivation is host-grammar's,
+    -- shared with the generator that mints the anchor).
+    is_explicit_anchor_heading: Boolean
+    has_anchor_divergence: Boolean
 }
 
 entity Match {
@@ -206,6 +211,17 @@ rule DetectLemContractViolation {
         and not line.in_lem_doctrine_section
         and line.has_lem_contract_defect
     ensures: Match.created(line: line, term: "lem-contract", severity: flag)
+}
+
+-- host#27: an explicit `{#anchor}` equals its title's slug, always. A
+-- hand-forged divergence is mechanically legal but forks the key at every
+-- cold grep and at the weak model's hand, so it is a blocking finding whose
+-- cite names the slug the generator would mint.
+rule DetectAnchorDivergence {
+    when: line: Line.created
+    requires: line.is_explicit_anchor_heading
+        and line.has_anchor_divergence
+    ensures: Match.created(line: line, term: "anchor-divergence", severity: flag)
 }
 
 -- The declaration carries the semantics across the scope chain, as strict

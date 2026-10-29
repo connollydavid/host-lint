@@ -1874,3 +1874,37 @@ fn a_restated_sentence_is_found_and_every_boundary_holds() {
     let twice = format!("{diff}+// The upstream that was set by hand is kept exactly as it was found.\n");
     assert_eq!(restated_comment_sentences(&twice, body).len(), 1, "the same sentence twice reports once");
 }
+
+// host#27: a hand-forged `{#anchor}` that diverges from its title's slug is a
+// flag whose cite names the slug the generator would mint; a true slug is
+// silent, and a heading without an anchor is not the rule's business.
+#[test]
+fn anchor_divergence_flags_the_forked_key() {
+    let mut hits = Vec::new();
+    host_lint::scan_text_with_allow_strict(
+        "### Run the loop {#run-the-loop}\n### Run the loop {#dogfood-loop}\n",
+        "plan/0001-x/README.md",
+        &[],
+        &[],
+        false,
+        &mut hits,
+    );
+    let divs: Vec<_> = hits.iter().filter(|m| m.term == "anchor-divergence").collect();
+    assert_eq!(divs.len(), 1, "the true slug is silent, the forked key flags");
+    assert!(
+        divs[0].cite.contains("{#run-the-loop}"),
+        "the cite names the minted slug: {}",
+        divs[0].cite
+    );
+
+    let mut hits = Vec::new();
+    host_lint::scan_text_with_allow_strict(
+        "### Run the loop\n",
+        "plan/0001-x/README.md",
+        &[],
+        &[],
+        false,
+        &mut hits,
+    );
+    assert!(hits.iter().all(|m| m.term != "anchor-divergence"));
+}

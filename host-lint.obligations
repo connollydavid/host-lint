@@ -101,3 +101,8 @@ rule-failure.DetectLemContractViolation.1   => test:lem_contract_classifies_the_
 rule-entity-creation.DetectLemContractViolation.1 => test:lem_contract_skips_its_own_section exercises=scan_lem_contract
 rule-success.LemHoldsAcrossScopes           => test:lem_directive_and_spine_activation exercises=resolve_lexicon
 rule-failure.LemHoldsAcrossScopes.1         => test:lem_directive_and_spine_activation exercises=resolve_lexicon
+
+# --- The anchor divergence rule (host#27, plan/0103) ---
+rule-success.DetectAnchorDivergence         => test:anchor_divergence_flags_the_forked_key exercises=scan_text_with_allow_strict
+rule-failure.DetectAnchorDivergence.1       => test:anchor_divergence_flags_the_forked_key exercises=scan_text_with_allow_strict
+rule-entity-creation.DetectAnchorDivergence.1 => test:anchor_divergence_flags_the_forked_key exercises=scan_text_with_allow_strict

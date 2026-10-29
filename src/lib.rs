@@ -1463,7 +1463,10 @@ pub fn scan_lem_line(line: &str) -> Vec<LemHit> {
         let quoted = in_quote;
         let end = word_run_end(b, start);
         i = end;
-        let word = &line[start..end];
+        // Checked slicing: `get` has no panicking-slice machinery for the
+        // solver to model, and the range is in bounds by construction
+        // (word_run_end stops at the buffer edge).
+        let word = line.get(start..end).unwrap_or("");
         for kind in classify_lem_word(word, quoted) {
             hits.push(LemHit { off: start, word: word.to_string(), kind });
         }
@@ -1826,6 +1829,32 @@ mod kani_lem {
     }
 }
 
+/// The (title, anchor) of a markdown heading carrying an explicit `{#anchor}`,
+/// or `None` for every other line (host#27). The title is the heading text
+/// before the brace; the anchor is the brace's content.
+fn heading_anchor(line: &str) -> Option<(&str, &str)> {
+    let t = line.trim_start();
+    let hashes = t.chars().take_while(|c| *c == '#').count();
+    if hashes == 0 || hashes > 6 {
+        return None;
+    }
+    let after = &t[hashes..];
+    if !after.starts_with(' ') {
+        return None;
+    }
+    let body = after.trim_start();
+    let open = body.rfind("{#")?;
+    if !body.ends_with('}') {
+        return None;
+    }
+    let title = body[..open].trim_end();
+    let anchor = &body[open + 2..body.len() - 1];
+    if title.is_empty() || anchor.is_empty() {
+        return None;
+    }
+    Some((title, anchor))
+}
+
 pub fn scan_text(input: &str, source: &str, matches: &mut Vec<Match>) {
     scan_text_with_allow(input, source, &[], matches);
 }
@@ -1901,6 +1930,27 @@ pub fn scan_text_with_allow_strict(
                 if info == "host-lint:ignore" {
                     ignore_fence = Some((c, len));
                     continue;
+                }
+            }
+        }
+        // host#27: an `{#anchor}` equals its title's slug, always. A hand-forged
+        // divergence forks the key at every cold grep; the derivation is
+        // host-grammar's, shared with the generator that mints the anchor.
+        if markdown {
+            if let Some((title, anchor)) = heading_anchor(line) {
+                if host_grammar::anchor_diverges(title, anchor) {
+                    matches.push(Match {
+                        file: source.to_string(),
+                        line: i + 1,
+                        col: 0,
+                        text: line.trim().to_string(),
+                        term: "anchor-divergence".to_string(),
+                        severity: Severity::Flag,
+                        cite: format!(
+                            "the anchor is the title's slug: {{#{}}}",
+                            host_grammar::slug_of_title(title)
+                        ),
+                    });
                 }
             }
         }

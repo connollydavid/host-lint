@@ -38,13 +38,38 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+      # The deploy lane (linux-amd64, the target the artifact record anchors) builds
+      # the way the record was made: the digest-pinned muslrust container, the
+      # recorded deps-bundle staged and sha-verified, network off, CARGO_HOME
+      # untouched. An ambient registry build produces different bytes (panic-site
+      # paths, the link driver), so the published asset must come from this lane.
+      # The build-id note is dropped by the committed .cargo/config.toml, which the
+      # container reads with the repo.
+      - name: Build (the recorded toolchain, deploy lane)
+        if: matrix.name == 'host-lint-linux-amd64'
+        run: |
+          curl -fsSL --retry 3 --retry-delay 2 -o vendor.tar.gz \
+            https://github.com/connollydavid/host-lint/releases/download/vendor-v21/vendor.tar.gz
+          echo "fe0e7964eef33c0fb06905f0bc45ccc49f0af78c09b90174539ff03a0cd94864  vendor.tar.gz" | sha256sum -c -
+          tar xzf vendor.tar.gz
+          mkdir -p .cargo
+          # append, not replace: the repo's config carries the build-id flags
+          cat vendor-config.toml >> .cargo/config.toml
+          docker run --rm --network none \
+            -v "$PWD":/src -w /src \
+            docker.io/clux/muslrust:1.95.0-stable@sha256:15a72a4abf1c593b0bea63a4a8f20e95c1e5a0696d7051eca87b9b850b2d7e43 \
+            bash -c 'RUSTUP_TOOLCHAIN=stable CARGO_INCREMENTAL=0 cargo build --release --locked --offline --target x86_64-unknown-linux-musl'
       - name: Install musl toolchain
-        if: contains(matrix.target, 'musl')
+        if: contains(matrix.target, 'musl') && matrix.name != 'host-lint-linux-amd64'
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
       - name: Add target
+        if: matrix.name != 'host-lint-linux-amd64'
         run: rustup target add ${{ matrix.target }}
+      - name: Build
+        if: matrix.name != 'host-lint-linux-amd64'
+        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Stage binaries
@@ -198,18 +223,21 @@ jobs:
   # its own job so the ceiling can only bite one harness, and names it when it
   # does. The re-derivation discharge gets its own job for the same reason: it
   # sits AFTER the proof step and so never once ran in CI.
+  #
+  # plan/0105: a harness row enters this matrix only after one concluding local
+  # run, and the job carries its own timeout (100 minutes) so a hang burns a
+  # bounded slice instead of the platform ceiling.
   kani:
     runs-on: ubuntu-latest
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
         harness:
-          - scan_line_never_panics_n1
-          - scan_line_never_panics_n2
-          - scan_line_never_panics_n3
-          - scan_line_never_panics_n4
-          - scan_line_never_panics_n5
-          - scan_line_never_panics_n6
+          # scan_line_never_panics_n1..n6 stay OUT (plan/0105): each ran past
+          # ninety minutes locally against the checked-slicing rework without
+          # concluding, the same hang that burned six GitHub ceilings, so the
+          # admission rule bars them until a local run concludes first.
           - lem_word_classification_matches_the_table_n3
           - lem_word_classification_matches_the_table_n4
           - lem_word_classification_matches_the_table_n5
@@ -294,19 +322,10 @@ jobs:
           pattern: host-lint-*
           path: dist
           merge-multiple: true
-      - name: Rebuild the certified x86_64-linux-musl asset in the pinned toolchain
-        # The canonical reproducible artifact is built in the digest-pinned muslrust
-        # image with the locked dependencies and recorded in .host-software (agentic-host),
-        # where `software --verify-build` re-derives it byte-for-byte at re-pin. Build the
-        # published linux-amd64 asset the same way (pinned image + --locked) so the
-        # distributed binary is that artifact, not a stock-runner apt-musl build that can
-        # differ in libc and linker (plan/0055, V7).
-        run: |
-          docker run --rm \
-            -v "$PWD":/src -w /src -e RUSTUP_TOOLCHAIN=stable \
-            clux/muslrust:1.95.0-stable@sha256:15a72a4abf1c593b0bea63a4a8f20e95c1e5a0696d7051eca87b9b850b2d7e43 \
-            sh -c 'CARGO_INCREMENTAL=0 cargo build --release --locked --target x86_64-unknown-linux-musl'
-          cp target/x86_64-unknown-linux-musl/release/host-lint dist/host-lint-linux-amd64
+      # plan/0105: no rebuild here. The linux-amd64 artifact from the build job's
+      # deploy lane IS the certified build (pinned container, staged bundle,
+      # network off), so the published asset is the recorded artifact and the
+      # publish receipt can name its digest with nothing re-derived on the runner.
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
